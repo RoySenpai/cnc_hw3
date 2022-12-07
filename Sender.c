@@ -45,6 +45,15 @@ void authCheck(int socketfd) {
         printf("Error with authentication!\n");
 }
 
+void sendExitandClose(int socketfd) {
+    char* exitcmd = "exit";
+    send(socketfd, exitcmd, strlen(exitcmd), 0);
+
+    printf("Closing connection...\n");
+
+    close(socketfd);
+}
+
 int main() {
     printf("Client startup...\n");
 
@@ -102,12 +111,7 @@ int main() {
     
     sleep(3);
 
-    char* exitcmd = "exit";
-    send(socketfd, exitcmd, strlen(exitcmd), 0);
-
-    printf("Closing connection...\n");
-
-    close(socketfd);
+    sendExitandClose(socketfd);
 
     return 0;
 }

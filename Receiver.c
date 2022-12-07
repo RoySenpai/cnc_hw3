@@ -30,25 +30,6 @@ char * timestamp() {
     return time;
 }
 
-int authCheck(int socketfd) {
-    int buffer, check = AUTH_CHECK;
-    printf_time("Authentication check...\n");
-
-    send(socketfd, &check, sizeof(int), 0);
-
-    printf("Waiting for authentication...\n");
-
-    recv(socketfd, &buffer, sizeof(int), 0);
-
-    if (buffer == check)
-        printf("Authentication completed.\n");
-
-    else
-        printf("Error with authentication!\n");
-
-    return buffer;
-}
-
 void socketSetup() {
     memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
@@ -77,6 +58,7 @@ void socketSetup() {
 }
 
 int main() {
+    int running = 1;
     printf_time("Server starting up...\n");
 
     socketSetup();
@@ -89,7 +71,7 @@ int main() {
 
     printf_time("Listening on %s:%d...\n", SERVER_IP_ADDRESS, SERVER_PORT);
 
-    while(1)
+    while(running)
     {
         memset(&clientAddress, 0, sizeof(clientAddress));
         clientAddressLen = sizeof(clientAddress);
@@ -110,8 +92,6 @@ int main() {
         while (1)
         {
             char buffer[FILE_SIZE/2];
-            int check = AUTH_CHECK;
-
             int recvb = recv(clientSocket, &buffer, sizeof(buffer), 0);
 
             if (recvb == -1)
@@ -129,12 +109,8 @@ int main() {
             if (buffer[0] == 'e' && buffer[1] == 'x' && buffer[2] == 'i' && buffer[3] == 't')
             {
                 printf_time("Exit command received, exiting...\n");
-                sleep(3);
-                close(clientSocket);
-                printf_time("Connection with {%s:%d} closed.\n", clientAddr, clientAddress.sin_port);
-                close(socketfd);
-                printf_time("Server shutdown...\n");
-                exit(0);
+                running = 0;
+                break;
             }
 
             printf_time("Received total %d/%d bytes\n", recvb, (FILE_SIZE/2));
