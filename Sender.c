@@ -9,17 +9,15 @@
 #include <unistd.h>
 #include "sockconst.h"
 
-int socketfd = INVALID_SOCKET;
-struct sockaddr_in serverAddress;
-
 const char * fileName = "sendthis.txt";
 
-void socketSetup() {
-    memset(&serverAddress, 0, sizeof(serverAddress));
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(SERVER_PORT);
+int socketSetup(struct sockaddr_in *serverAddress) {
+    int socketfd = INVALID_SOCKET;
+    memset(serverAddress, 0, sizeof(*serverAddress));
+    serverAddress->sin_family = AF_INET;
+    serverAddress->sin_port = htons(SERVER_PORT);
 
-    if (inet_pton(AF_INET, (const char*) SERVER_IP_ADDRESS, &serverAddress.sin_addr) == -1)
+    if (inet_pton(AF_INET, (const char*) SERVER_IP_ADDRESS, &serverAddress->sin_addr) == -1)
     {
         perror("inet_pton()");
         exit(1);
@@ -30,6 +28,8 @@ void socketSetup() {
         perror("socket()");
         exit(1);
     }
+
+    return socketfd;
 }
 
 void authCheck(int socketfd) {
@@ -54,20 +54,7 @@ void sendExitandClose(int socketfd) {
     close(socketfd);
 }
 
-int main() {
-    printf("Client startup...\n");
-
-    socketSetup();
-
-    if (connect(socketfd, (struct sockaddr*) &serverAddress, sizeof(serverAddress)) == -1)
-    {
-        printf("Connection to %s:%d couldn't be made!\n",SERVER_IP_ADDRESS,SERVER_PORT);
-        perror("connect");
-        exit(1);
-    }
-
-    printf("Connected successfully to %s:%d!\n",SERVER_IP_ADDRESS,SERVER_PORT);
-
+void readFromFile(char* fileContent) {
     FILE * fpointer = NULL;
     fpointer = fopen(fileName, "r");
 
@@ -77,39 +64,69 @@ int main() {
         exit(1);
     }
 
-    char fileContent[FILE_SIZE];
     fread(fileContent, sizeof(char), FILE_SIZE, fpointer);
     fclose(fpointer);
+}
 
-    int sentd = send(socketfd, fileContent, FILE_SIZE/2, 0);
-
-    if (sentd == 0)
-        printf("Server doesn't accept requests.\n");
-
-    else if (sentd < (FILE_SIZE / 2))
-    {
-        printf("File was only partly sent (%d/%d bytes)\n", sentd, (FILE_SIZE / 2));
-    }
-
-    printf("Total bytes sent is %d out of %d.\n", sentd, (FILE_SIZE / 2));
-
-    authCheck(socketfd);
-
-    sentd = send(socketfd, (fileContent+FILE_SIZE/2), FILE_SIZE/2, 0);
+int sendFile(int socketfd, char* buffer, int len) {
+    int sentd = send(socketfd, buffer, len, 0);
 
     if (sentd == 0)
         printf("Server doesn't accept requests.\n");
 
-    else if (sentd < (FILE_SIZE / 2))
+    else if (sentd < len)
     {
-        printf("File was only partly sent (%d/%d bytes)\n", sentd, (FILE_SIZE / 2));
+        printf("File was only partly sent (%d/%d bytes).\n", sentd, len);
     }
 
-    printf("Total bytes sent is %d out of %d.\n", sentd, (FILE_SIZE / 2));
+    else
+        printf("Total bytes sent is %d.\n", sentd);
 
-    authCheck(socketfd);
+    return sentd;
+}
+
+int main() {
+    char fileContent[FILE_SIZE];
+    int socketfd = INVALID_SOCKET;
+    struct sockaddr_in serverAddress;
+
+    printf("Client startup...\n");
+
+    printf("Reading file content\n");
+    readFromFile(fileContent);
+
+    printf("Setting up the socket\n");
+    socketfd = socketSetup(&serverAddress);
+
+    printf("Connection to %s:%d...\n",SERVER_IP_ADDRESS,SERVER_PORT);
+
+    if (connect(socketfd, (struct sockaddr*) &serverAddress, sizeof(serverAddress)) == -1)
+    {
+        printf("Connection to %s:%d couldn't be made!\n", SERVER_IP_ADDRESS, SERVER_PORT);
+        perror("connect");
+        exit(1);
+    }
+
+    printf("Connected successfully to %s:%d!\n", SERVER_IP_ADDRESS, SERVER_PORT);
+
+    while(1)
+    {
+        int choice;
+
+        sendFile(socketfd, fileContent, (FILE_SIZE/2));
+        authCheck(socketfd);
+
+        sendFile(socketfd, (fileContent+(FILE_SIZE/2)), (FILE_SIZE/2));
+        authCheck(socketfd);
+
+        printf("Send the file again? (For data gathering)\n");
+        scanf("%d", &choice);
+
+        if (!choice)
+            break;
+    }
     
-    sleep(3);
+    sleep(1);
 
     sendExitandClose(socketfd);
 

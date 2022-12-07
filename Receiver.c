@@ -13,11 +13,6 @@
 char * timestamp();
 #define printf_time(f_, ...) printf("%s ", timestamp()), printf((f_), ##__VA_ARGS__);
 
-int socketfd = INVALID_SOCKET, canReused = 1;
-struct sockaddr_in serverAddress;
-struct sockaddr_in clientAddress;
-socklen_t clientAddressLen = sizeof(clientAddress);
-
 char * timestamp() {
     char buffer[16];
     time_t now = time(NULL);
@@ -30,51 +25,60 @@ char * timestamp() {
     return time;
 }
 
-void socketSetup() {
-    memset(&serverAddress, 0, sizeof(serverAddress));
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_addr.s_addr = INADDR_ANY;
-    serverAddress.sin_port = htons(SERVER_PORT);
+int socketSetup(struct sockaddr_in *serverAddress) {
+    int socketfd = INVALID_SOCKET, canReused = 1;
+
+    memset(serverAddress, 0, sizeof(*serverAddress));
+    serverAddress->sin_family = AF_INET;
+    serverAddress->sin_addr.s_addr = INADDR_ANY;
+    serverAddress->sin_port = htons(SERVER_PORT);
 
     if ((socketfd = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET)
     {
-        perror("socket()");
+        perror("socket");
         exit(1);
     }
 
     if (setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR, &canReused, sizeof(canReused)) == -1)
     {
-        perror("setsockopt()");
+        perror("setsockopt");
         exit(1);
     }
 
-    if (bind(socketfd, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) == -1)
+    if (bind(socketfd, (struct sockaddr *)serverAddress, sizeof(*serverAddress)) == -1)
     {
-        perror("bind()");
+        perror("bind");
+        exit(1);
+    }
+
+    if (listen(socketfd, MAX_QUEUE) == -1)
+    {
+        perror("listen");
         exit(1);
     }
 
     printf_time("Socket successfully created.\n");
+
+    return socketfd;
 }
 
 int main() {
+    int socketfd = INVALID_SOCKET;
     int running = 1;
+    struct sockaddr_in serverAddress;
+
     printf_time("Server starting up...\n");
 
-    socketSetup();
-
-    if (listen(socketfd, MAX_QUEUE) == -1)
-    {
-        perror("listen()");
-        exit(1);
-    }
+    socketfd = socketSetup(&serverAddress);
 
     printf_time("Listening on %s:%d...\n", SERVER_IP_ADDRESS, SERVER_PORT);
 
     while(running)
     {
+        struct sockaddr_in clientAddress;
         memset(&clientAddress, 0, sizeof(clientAddress));
-        clientAddressLen = sizeof(clientAddress);
+
+        socklen_t clientAddressLen = sizeof(clientAddress);
 
         int clientSocket = accept(socketfd, (struct sockaddr *) &clientAddress, &clientAddressLen);
 
@@ -115,14 +119,13 @@ int main() {
 
             printf_time("Received total %d/%d bytes\n", recvb, (FILE_SIZE/2));
 
-            printf_time("Authentication...\n");
             int buff = AUTH_CHECK;
             send(clientSocket, &buff, sizeof(int), 0);
 
             printf_time("Authentication sent back.\n");
         }
 
-        sleep(3);
+        sleep(1);
         close(clientSocket);
         printf_time("Connection with {%s:%d} closed.\n", clientAddr, clientAddress.sin_port);
     }
