@@ -34,7 +34,6 @@ void socketSetup() {
 
 void authCheck(int socketfd) {
     int buffer, check = AUTH_CHECK;
-
     printf("Waiting for authentication...\n");
 
     recv(socketfd, &buffer, sizeof(int), 0);
@@ -69,59 +68,46 @@ int main() {
         exit(1);
     }
 
-    fseek(fpointer, 0, SEEK_END);
-    int fsize = ftell(fpointer);
-    char* fileContent = malloc(fsize * sizeof(char) * 2);
-    fseek(fpointer, 0, SEEK_SET);
+    char fileContent[FILE_SIZE];
+    fread(fileContent, sizeof(char), FILE_SIZE, fpointer);
+    fclose(fpointer);
 
-    char* currentP = fileContent;
+    int sentd = send(socketfd, fileContent, FILE_SIZE/2, 0);
 
-    while (!feof(fpointer))
+    if (sentd == 0)
+        printf("Server doesn't accept requests.\n");
+
+    else if (sentd < (FILE_SIZE / 2))
     {
-        *currentP = fgetc(fpointer);
-        ++currentP;
+        printf("File was only partly sent (%d/%d bytes)\n", sentd, (FILE_SIZE / 2));
     }
 
-    *currentP = '\0';
-    currentP = fileContent;
-
-    int totalBytes = 0;
-
-    while (totalBytes < (fsize/2))
-    {
-         int sentd = send(socketfd, &currentP, DEFUALT_SIZE, 0);
-
-        if (sentd == 0)
-        {
-            printf("Server doesn't accept requests.\n");
-            break;
-        }
-
-        else if (sentd < DEFUALT_SIZE)
-        {
-            totalBytes += sentd;
-            printf("File was only partly sent (%d/%d bytes)\n", sentd, DEFUALT_SIZE);
-        }
-
-        else
-        {
-            totalBytes += sentd;
-            printf("Chunck file sent %d/%d bytes.\n", totalBytes, (fsize/2));
-        }
-
-        currentP += sentd;
-    }
-
-    printf("Total bytes sent is %d out of %d.\n", totalBytes, (fsize/2));
+    printf("Total bytes sent is %d out of %d.\n", sentd, (FILE_SIZE / 2));
 
     authCheck(socketfd);
 
+    sentd = send(socketfd, (fileContent+FILE_SIZE/2), FILE_SIZE/2, 0);
+
+    if (sentd == 0)
+        printf("Server doesn't accept requests.\n");
+
+    else if (sentd < (FILE_SIZE / 2))
+    {
+        printf("File was only partly sent (%d/%d bytes)\n", sentd, (FILE_SIZE / 2));
+    }
+
+    printf("Total bytes sent is %d out of %d.\n", sentd, (FILE_SIZE / 2));
+
+    authCheck(socketfd);
+    
     sleep(3);
+
+    char* exitcmd = "exit";
+    send(socketfd, exitcmd, strlen(exitcmd), 0);
 
     printf("Closing connection...\n");
 
     close(socketfd);
-    free(fileContent);
 
     return 0;
 }

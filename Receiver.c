@@ -30,6 +30,25 @@ char * timestamp() {
     return time;
 }
 
+int authCheck(int socketfd) {
+    int buffer, check = AUTH_CHECK;
+    printf_time("Authentication check...\n");
+
+    send(socketfd, &check, sizeof(int), 0);
+
+    printf("Waiting for authentication...\n");
+
+    recv(socketfd, &buffer, sizeof(int), 0);
+
+    if (buffer == check)
+        printf("Authentication completed.\n");
+
+    else
+        printf("Error with authentication!\n");
+
+    return buffer;
+}
+
 void socketSetup() {
     memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
@@ -88,11 +107,11 @@ int main() {
 
         printf_time("Connection made with {%s:%d}\n", clientAddr, clientAddress.sin_port);
 
-        char buffer[DEFUALT_SIZE];
-        int totalBytes = 0;
-
-        while (totalBytes < (DEFUALT_SIZE * 272))
+        while (1)
         {
+            char buffer[FILE_SIZE/2];
+            int check = AUTH_CHECK;
+
             int recvb = recv(clientSocket, &buffer, sizeof(buffer), 0);
 
             if (recvb == -1)
@@ -107,19 +126,25 @@ int main() {
                 break;
             }
 
-            totalBytes += recvb;
+            if (buffer[0] == 'e' && buffer[1] == 'x' && buffer[2] == 'i' && buffer[3] == 't')
+            {
+                printf_time("Exit command received, exiting...\n");
+                sleep(3);
+                close(clientSocket);
+                printf_time("Connection with {%s:%d} closed.\n", clientAddr, clientAddress.sin_port);
+                close(socketfd);
+                printf_time("Server shutdown...\n");
+                exit(0);
+            }
 
-            printf_time("Received total %d/%d bytes\n", totalBytes, (DEFUALT_SIZE * 272));
+            printf_time("Received total %d/%d bytes\n", recvb, (FILE_SIZE/2));
+
+            printf_time("Authentication...\n");
+            int buff = AUTH_CHECK;
+            send(clientSocket, &buff, sizeof(int), 0);
+
+            printf_time("Authentication sent back.\n");
         }
-
-        printf_time("Received %d bytes total.\n", totalBytes);
-
-        printf_time("Authentication check...\n");
-
-        int check = AUTH_CHECK;
-        send(clientSocket, &check, sizeof(int), 0);
-
-        printf_time("Authentication sent back.\n");
 
         sleep(3);
         close(clientSocket);

@@ -7,5 +7,6 @@
 #define SERVER_IP_ADDRESS "127.0.0.1"
 #define AUTH_CHECK 6159^2175
 #define DEFUALT_SIZE 4096
+#define FILE_SIZE 2228224
 
 #endif
