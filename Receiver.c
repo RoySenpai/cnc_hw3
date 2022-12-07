@@ -88,25 +88,31 @@ int main() {
 
         printf_time("Connection made with {%s:%d}\n", clientAddr, clientAddress.sin_port);
 
-        char buffer[64];
-        int recvb;
+        char buffer[DEFUALT_SIZE];
+        int totalBytes = 0;
 
-        recvb = recv(clientSocket, &buffer, sizeof(buffer), 0);
-
-        if (recvb == -1)
+        while (totalBytes < (DEFUALT_SIZE * 272))
         {
-            perror("recv()");
-            exit(1);
+            int recvb = recv(clientSocket, &buffer, sizeof(buffer), 0);
+
+            if (recvb == -1)
+            {
+                perror("recv()");
+                exit(1);
+            }
+
+            else if (!recvb)
+            {
+                printf_time("Connection with client closed.\n");
+                break;
+            }
+
+            totalBytes += recvb;
+
+            printf_time("Received total %d/%d bytes\n", totalBytes, (DEFUALT_SIZE * 272));
         }
 
-        else if (!recvb)
-        {
-            printf_time("Connection with client closed.");
-            continue;
-        }
-
-        printf_time("Received %d bytes.\n", recvb);
-        printf_time("Message: %s\n", buffer);
+        printf_time("Received %d bytes total.\n", totalBytes);
 
         printf_time("Authentication check...\n");
 
@@ -115,6 +121,9 @@ int main() {
 
         printf_time("Authentication sent back.\n");
 
+        sleep(3);
+        close(clientSocket);
+        printf_time("Connection with {%s:%d} closed.\n", clientAddr, clientAddress.sin_port);
     }
 
     close(socketfd);
