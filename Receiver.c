@@ -69,7 +69,7 @@ int getDataFromClient(int clientSocket, char *buffer, int len) {
 
     if (recvb == -1)
     {
-        perror("recv()");
+        perror("recv");
         exit(1);
     }
 
@@ -80,6 +80,32 @@ int getDataFromClient(int clientSocket, char *buffer, int len) {
     }
 
     return recvb;
+}
+
+void calculateTimes(clock_t * firstPart, clock_t * secondPart, int times_runned) {
+    clock_t sumFirstPart = 0, sumSecondPart = 0, avgFirstPart, avgSecondPart;
+
+    printf("--------------------------------------------\n");
+    printf("(*) Times summary:\n");
+
+    for (int i = 0; i < times_runned; ++i)
+    {
+        sumFirstPart += firstPart[i];
+        sumSecondPart += secondPart[i];
+
+        printf("(*) Run %d: First part: %ld microseconds; Second part: %ld microseconds\n", (i+1), (firstPart[i]), (secondPart[i]));
+    }
+
+    avgFirstPart = (sumFirstPart / times_runned);
+    avgSecondPart = (sumSecondPart / times_runned);
+
+    printf("(*) Time avarages:\n");
+    printf("(*) First part: %ld microseconds\n", avgFirstPart);
+    printf("(*) Second part: %ld microseconds\n", avgSecondPart);
+    printf("--------------------------------------------\n");
+
+    free(firstPart);
+    free(secondPart);
 }
 
 int main() {
@@ -97,8 +123,10 @@ int main() {
     {
         struct sockaddr_in clientAddress;
         socklen_t clientAddressLen;
-        int clientSocket;
+        int clientSocket, times_runned;
         char clientAddr[INET_ADDRSTRLEN];
+        clock_t *firstPart = malloc(DEFAULT_SIZE_TIMES * sizeof(clock_t)), *secondPart = malloc(DEFAULT_SIZE_TIMES * sizeof(clock_t));
+        int currentSize = DEFAULT_SIZE_TIMES;
 
         memset(&clientAddress, 0, sizeof(clientAddress));
 
@@ -116,35 +144,71 @@ int main() {
 
         printf_time("Connection made with {%s:%d}\n", clientAddr, clientAddress.sin_port);
 
+        int totalReceived = 0, whichPart = 1;
+        clock_t startTime;
+
         while (1)
         {
             int totalBytesReceived, buff = AUTH_CHECK;
             char buffer[FILE_SIZE/2];
 
-            memset(buffer, 0, sizeof(buffer));
-
-            printf_time("Waiting for client data...\n");
+            if (totalReceived == 0)
+            {
+                memset(buffer, 0, sizeof(buffer));
+                printf_time("Waiting for client data...\n");
+                startTime = clock();
+            }
 
             totalBytesReceived = getDataFromClient(clientSocket, buffer, (FILE_SIZE/2));
+            totalReceived += totalBytesReceived;
 
-            if (buffer[0] == 'e' && buffer[1] == 'x' && buffer[2] == 'i' && buffer[3] == 't')
+            if (totalReceived == (FILE_SIZE/2))
+            {
+                if (whichPart == 2)
+                {
+                    secondPart[times_runned] = clock() - startTime;
+
+                    if (++times_runned == currentSize)
+                    {
+                        currentSize *= 2;
+                        firstPart = realloc(firstPart, (currentSize * sizeof(clock_t)));
+                        secondPart = realloc(secondPart, (currentSize * sizeof(clock_t)));
+                    }
+
+                    whichPart = 1;
+                }
+
+                else
+                {
+                    firstPart[times_runned] = clock() - startTime;
+                    whichPart = 2;
+                }
+
+                printf_time("Received total %d bytes\n", totalReceived);
+
+                totalReceived = 0;
+
+                send(clientSocket, &buff, sizeof(int), 0);
+
+                printf_time("Authentication sent back.\n");
+            }
+
+            else if (buffer[0] == 'e' && buffer[1] == 'x' && buffer[2] == 'i' && buffer[3] == 't')
             {
                 printf_time("Exit command received, exiting...\n");
                 running = 0;
                 break;
             }
-
-            printf_time("Received total %d/%d bytes\n", totalBytesReceived, (FILE_SIZE/2));
-
-            send(clientSocket, &buff, sizeof(int), 0);
-
-            printf_time("Authentication sent back.\n");
         }
+
+        calculateTimes(firstPart, secondPart, times_runned);
 
         sleep(1);
         close(clientSocket);
         printf_time("Connection with {%s:%d} closed.\n", clientAddr, clientAddress.sin_port);
     }
+
+
 
     close(socketfd);
     printf_time("Server shutdown...\n");
