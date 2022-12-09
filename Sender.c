@@ -1,3 +1,22 @@
+/*
+ *  Communication and Computing Course Assigment 3:
+ *  TCP – Congestion Control Algorithms Network programming in C
+ *  Copyright (C) 2022  Roy Simanovich and Yuval Yurzdichinsky
+
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -87,7 +106,7 @@ void readFromFile(char* fileContent) {
     fclose(fpointer);
 }
 
-int sendFile(int socketfd, char* buffer, int len) {
+int sendData(int socketfd, char* buffer, int len) {
     int sentd = send(socketfd, buffer, len, 0);
 
     if (sentd == 0)
@@ -95,7 +114,7 @@ int sendFile(int socketfd, char* buffer, int len) {
 
     else if (sentd < len)
     {
-        printf("File was only partly send (%d/%d bytes).\n", sentd, len);
+        printf("Data was only partly send (%d/%d bytes).\n", sentd, len);
     }
 
     else
@@ -125,20 +144,21 @@ int main() {
     char fileContent[FILE_SIZE];
     int socketfd = INVALID_SOCKET;
     struct sockaddr_in serverAddress;
+    char* exitcmd = "exit";
+    int exitcmdlen = (int) (strlen(exitcmd) + 1);
 
-    printf("Client startup...\n");
+    printf("Client startup\n");
 
-    printf("Reading file content\n");
+    printf("Reading file content...\n");
     readFromFile(fileContent);
 
-    printf("Setting up the socket\n");
+    printf("Setting up the socket...\n");
     socketfd = socketSetup(&serverAddress);
 
     printf("Connection to %s:%d...\n",SERVER_IP_ADDRESS,SERVER_PORT);
 
     if (connect(socketfd, (struct sockaddr*) &serverAddress, sizeof(serverAddress)) == -1)
     {
-        printf("Connection to %s:%d couldn't be made!\n", SERVER_IP_ADDRESS, SERVER_PORT);
         perror("connect");
         exit(1);
     }
@@ -152,7 +172,7 @@ int main() {
 
         while(!check)
         {
-            sendFile(socketfd, fileContent, (FILE_SIZE/2));
+            sendData(socketfd, fileContent, (FILE_SIZE/2));
             check = authCheck(socketfd);
         }
 
@@ -168,7 +188,7 @@ int main() {
 
         while(!check)
         {
-            sendFile(socketfd, fileContent, (FILE_SIZE/2));
+            sendData(socketfd, fileContent, (FILE_SIZE/2));
             check = authCheck(socketfd);
         }
 
@@ -176,7 +196,11 @@ int main() {
         scanf("%d", &choice);
 
         if (!choice)
+        {
+            printf("Sending exit command to receiver.\n");
+            sendData(socketfd, exitcmd, exitcmdlen);
             break;
+        }
 
         printf("Changing congestion control algorithm to cubic...\n");
 
@@ -188,10 +212,10 @@ int main() {
             exit(1);
         }
     }
-    
-    sleep(1);
 
-    sendExitandClose(socketfd);
+    printf("Closing connection...\n");
+
+    close(socketfd);
 
     return 0;
 }
