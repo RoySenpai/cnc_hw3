@@ -55,7 +55,18 @@ int authCheck(int socketfd) {
 
 void sendExitandClose(int socketfd) {
     char* exitcmd = "exit";
-    send(socketfd, exitcmd, strlen(exitcmd), 0);
+    int len = (int) (strlen(exitcmd) + 1);
+
+    int sentd = send(socketfd, exitcmd, len, 0);
+
+    if (sentd == 0)
+        printf("Server doesn't accept requests.\n");
+
+    else if (sentd < len)
+        printf("Data was only partly send (%d/%d bytes).\n", sentd, len);
+
+    else
+        printf("Total bytes sent is %d.\n", sentd);
 
     printf("Closing connection...\n");
 
@@ -84,7 +95,7 @@ int sendFile(int socketfd, char* buffer, int len) {
 
     else if (sentd < len)
     {
-        printf("File was only partly sent (%d/%d bytes).\n", sentd, len);
+        printf("File was only partly send (%d/%d bytes).\n", sentd, len);
     }
 
     else
@@ -170,7 +181,7 @@ int main() {
         printf("Changing congestion control algorithm to cubic...\n");
 
         len = strlen(CC_cubic);
-        
+
         if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_cubic, len) != 0)
         {
             perror("setsockopt");

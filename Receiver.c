@@ -93,15 +93,15 @@ void calculateTimes(clock_t * firstPart, clock_t * secondPart, int times_runned)
         sumFirstPart += firstPart[i];
         sumSecondPart += secondPart[i];
 
-        printf("(*) Run %d: First part: %ld microseconds; Second part: %ld microseconds\n", (i+1), (firstPart[i]), (secondPart[i]));
+        printf("(*) Run %d: First part: %ld μs; Second part: %ld μs\n", (i+1), (firstPart[i]), (secondPart[i]));
     }
 
     avgFirstPart = (sumFirstPart / times_runned);
     avgSecondPart = (sumSecondPart / times_runned);
 
     printf("(*) Time avarages:\n");
-    printf("(*) First part: %ld microseconds\n", avgFirstPart);
-    printf("(*) Second part: %ld microseconds\n", avgSecondPart);
+    printf("(*) First part: %ld μs\n", avgFirstPart);
+    printf("(*) Second part: %ld μs\n", avgSecondPart);
     printf("--------------------------------------------\n");
 
     free(firstPart);
@@ -176,21 +176,23 @@ int main() {
                     }
 
                     whichPart = 1;
+                    printf_time("Second part received.\n");
                 }
 
                 else
                 {
                     firstPart[times_runned] = clock() - startTime;
                     whichPart = 2;
+
+                    printf_time("First part received, waiting for second part...\n");
                 }
 
                 printf_time("Received total %d bytes\n", totalReceived);
+                printf_time("Sending authentication check...\n");
+                send(clientSocket, &buff, sizeof(int), 0);
+                printf_time("Authentication sent.\n");
 
                 totalReceived = 0;
-
-                send(clientSocket, &buff, sizeof(int), 0);
-
-                printf_time("Authentication sent back.\n");
             }
 
             else if (buffer[0] == 'e' && buffer[1] == 'x' && buffer[2] == 'i' && buffer[3] == 't')
@@ -207,8 +209,6 @@ int main() {
         close(clientSocket);
         printf_time("Connection with {%s:%d} closed.\n", clientAddr, clientAddress.sin_port);
     }
-
-
 
     close(socketfd);
     printf_time("Server shutdown...\n");
