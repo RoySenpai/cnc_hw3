@@ -3,6 +3,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
@@ -62,6 +64,24 @@ int socketSetup(struct sockaddr_in *serverAddress) {
     return socketfd;
 }
 
+int getDataFromClient(int clientSocket, char *buffer, int len) {
+    int recvb = recv(clientSocket, buffer, len, 0);
+
+    if (recvb == -1)
+    {
+        perror("recv()");
+        exit(1);
+    }
+
+    else if (!recvb)
+    {
+        printf_time("Connection with client closed.\n");
+        return 0;
+    }
+
+    return recvb;
+}
+
 int main() {
     int socketfd = INVALID_SOCKET;
     int running = 1;
@@ -76,39 +96,36 @@ int main() {
     while(running)
     {
         struct sockaddr_in clientAddress;
+        socklen_t clientAddressLen;
+        int clientSocket;
+        char clientAddr[INET_ADDRSTRLEN];
+
         memset(&clientAddress, 0, sizeof(clientAddress));
 
-        socklen_t clientAddressLen = sizeof(clientAddress);
+        clientAddressLen = sizeof(clientAddress);
 
-        int clientSocket = accept(socketfd, (struct sockaddr *) &clientAddress, &clientAddressLen);
+        clientSocket = accept(socketfd, (struct sockaddr *) &clientAddress, &clientAddressLen);
 
         if (clientSocket == -1)
         {
-            perror("accept()");
+            perror("accept");
             exit(1);
         }
-
-        char clientAddr[INET_ADDRSTRLEN];
+        
         inet_ntop(AF_INET, &(clientAddress.sin_addr), clientAddr, INET_ADDRSTRLEN);
 
         printf_time("Connection made with {%s:%d}\n", clientAddr, clientAddress.sin_port);
 
         while (1)
         {
+            int totalBytesReceived, buff = AUTH_CHECK;
             char buffer[FILE_SIZE/2];
-            int recvb = recv(clientSocket, &buffer, sizeof(buffer), 0);
 
-            if (recvb == -1)
-            {
-                perror("recv()");
-                exit(1);
-            }
+            memset(buffer, 0, sizeof(buffer));
 
-            else if (!recvb)
-            {
-                printf_time("Connection with client closed.\n");
-                break;
-            }
+            printf_time("Waiting for client data...\n");
+
+            totalBytesReceived = getDataFromClient(clientSocket, buffer, (FILE_SIZE/2));
 
             if (buffer[0] == 'e' && buffer[1] == 'x' && buffer[2] == 'i' && buffer[3] == 't')
             {
@@ -117,9 +134,8 @@ int main() {
                 break;
             }
 
-            printf_time("Received total %d/%d bytes\n", recvb, (FILE_SIZE/2));
+            printf_time("Received total %d/%d bytes\n", totalBytesReceived, (FILE_SIZE/2));
 
-            int buff = AUTH_CHECK;
             send(clientSocket, &buff, sizeof(int), 0);
 
             printf_time("Authentication sent back.\n");
