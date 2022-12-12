@@ -35,182 +35,14 @@ char * CC_reno = "reno";
 char * CC_cubic = "cubic";
 
 char * timestamp();
+int socketSetup(struct sockaddr_in*);
+int getDataFromClient(int, void*, int);
+int sendData(int, void*, int);
+void changeCCAlgorithm(int, int);
+void authCheck(int);
+void calculateTimes(clock_t*, clock_t*, int);
+
 #define printf_time(f_, ...) printf("%s ", timestamp()), printf((f_), ##__VA_ARGS__);
-
-char * timestamp() {
-    char buffer[16];
-    time_t now = time(NULL);
-    struct tm* timest = localtime(&now);
-
-    strftime(buffer, sizeof(buffer), "(%H:%M:%S)", timest);
-
-    char * time = buffer;
-
-    return time;
-}
-
-int socketSetup(struct sockaddr_in *serverAddress) {
-    int socketfd = INVALID_SOCKET, canReused = 1;
-
-    memset(serverAddress, 0, sizeof(*serverAddress));
-    serverAddress->sin_family = AF_INET;
-    serverAddress->sin_addr.s_addr = INADDR_ANY;
-    serverAddress->sin_port = htons(SERVER_PORT);
-
-    if ((socketfd = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET)
-    {
-        perror("socket");
-        exit(1);
-    }
-
-    if (setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR, &canReused, sizeof(canReused)) == -1)
-    {
-        perror("setsockopt");
-        exit(1);
-    }
-
-    if (bind(socketfd, (struct sockaddr *)serverAddress, sizeof(*serverAddress)) == -1)
-    {
-        perror("bind");
-        exit(1);
-    }
-
-    if (listen(socketfd, MAX_QUEUE) == -1)
-    {
-        perror("listen");
-        exit(1);
-    }
-
-    printf_time("Socket successfully created.\n");
-
-    return socketfd;
-}
-
-int getDataFromClient(int clientSocket, void *buffer, int len) {
-    int recvb = recv(clientSocket, buffer, len, 0);
-
-    if (recvb == -1)
-    {
-        perror("recv");
-        exit(1);
-    }
-
-    else if (!recvb)
-    {
-        printf_time("Connection with client closed.\n");
-        return 0;
-    }
-
-    return recvb;
-}
-
-int sendData(int clientSocket, void* buffer, int len) {
-    int sentd = send(clientSocket, buffer, len, 0);
-
-    if (sentd == 0)
-    {
-        printf_time("Client doesn't accept requests.\n");
-    }
-
-    else if (sentd < len)
-    {
-        printf_time("Data was only partly send (%d/%d bytes).\n", sentd, len);
-    }
-
-    else
-    {
-        printf_time("Total bytes sent is %d.\n", sentd);
-    }
-
-    usleep(WAIT_TIME);
-
-    return sentd;
-}
-
-void changeCCAlgorithm(int socketfd, int whichOne) {
-    printf_time("Changing congestion control algorithm to %s...\n", (whichOne ? "reno":"cubic"));
-
-    if (whichOne)
-    {
-        socklen_t CC_reno_len = strlen(CC_reno);
-
-        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_reno, CC_reno_len) != 0)
-        {
-            perror("setsockopt");
-            exit(1);
-        }
-    }
-
-    else
-    {
-        socklen_t CC_cubic_len = strlen(CC_cubic);
-
-        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_cubic, CC_cubic_len) != 0)
-        {
-            perror("setsockopt");
-            exit(1);
-        }
-    }
-}
-
-void authCheck(int clientSocket) {
-    int auth, ok = 1, check = AUTH_CHECK;
-
-    // This is a dummy send, incase of packet loss - so the receiver will get every part of the file.
-    send(clientSocket, &ok, sizeof(int), 0);
-
-    printf_time("Waiting for authentication...\n");
-    getDataFromClient(clientSocket, &auth, sizeof(int));
-
-    if (auth != check)
-    {
-        printf_time("Error with authentication!\n");
-    }
-
-    else
-    {
-        printf_time("Authentication OK.\n");
-    }
-
-    sendData(clientSocket, &auth, sizeof(int));
-    printf_time("Authentication sent back.\n");
-}
-
-void calculateTimes(clock_t * firstPart, clock_t * secondPart, int times_runned) {
-    clock_t sumFirstPart = 0, sumSecondPart = 0, avgFirstPart = 0, avgSecondPart = 0;
-
-    printf("--------------------------------------------\n");
-    printf("(*) Times summary:\n\n");
-    printf("(*) Cubic CC:\n");
-
-    for (int i = 0; i < times_runned; ++i)
-    {
-        sumFirstPart += firstPart[i];
-        printf("(*) Run %d, Time: %ld μs\n", (i+1), firstPart[i]);
-    }
-
-    printf("\n(*) Reno CC:\n");
-
-    for (int i = 0; i < times_runned; ++i)
-    {
-        sumSecondPart += secondPart[i];
-        printf("(*) Run %d, Time: %ld μs\n", (i+1), secondPart[i]);
-    }
-
-    if (times_runned > 0)
-    {
-        avgFirstPart = (sumFirstPart / times_runned);
-        avgSecondPart = (sumSecondPart / times_runned);
-    }
-
-    printf("\n(*) Time avarages:\n");
-    printf("(*) First part (Cubic CC): %ld μs\n", avgFirstPart);
-    printf("(*) Second part (Reno CC): %ld μs\n", avgSecondPart);
-    printf("--------------------------------------------\n");
-
-    free(firstPart);
-    free(secondPart);
-}
 
 int main() {
     int socketfd = INVALID_SOCKET;
@@ -325,4 +157,223 @@ int main() {
     printf_time("Server shutdown...\n");
     
     return 0;
+}
+
+char * timestamp() {
+    char buffer[16];
+    time_t now = time(NULL);
+    struct tm* timest = localtime(&now);
+
+    strftime(buffer, sizeof(buffer), "(%H:%M:%S)", timest);
+
+    char * time = buffer;
+
+    return time;
+}
+
+/*
+ * Function:  socketSetup
+ * --------------------
+ * Setup the socket itself (bind, listen, etc.).
+ *
+ *  serverAddress: a sockaddr_in struct that contains all the infromation
+ *                  needed to connect to the receiver end.
+ *
+ *  returns: socket file descriptor if successed,
+ *           exit error 1 on fail.
+ */
+int socketSetup(struct sockaddr_in *serverAddress) {
+    int socketfd = INVALID_SOCKET, canReused = 1;
+
+    memset(serverAddress, 0, sizeof(*serverAddress));
+    serverAddress->sin_family = AF_INET;
+    serverAddress->sin_addr.s_addr = INADDR_ANY;
+    serverAddress->sin_port = htons(SERVER_PORT);
+
+    if ((socketfd = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET)
+    {
+        perror("socket");
+        exit(1);
+    }
+
+    if (setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR, &canReused, sizeof(canReused)) == -1)
+    {
+        perror("setsockopt");
+        exit(1);
+    }
+
+    if (bind(socketfd, (struct sockaddr *)serverAddress, sizeof(*serverAddress)) == -1)
+    {
+        perror("bind");
+        exit(1);
+    }
+
+    if (listen(socketfd, MAX_QUEUE) == -1)
+    {
+        perror("listen");
+        exit(1);
+    }
+
+    printf_time("Socket successfully created.\n");
+
+    return socketfd;
+}
+
+int getDataFromClient(int clientSocket, void *buffer, int len) {
+    int recvb = recv(clientSocket, buffer, len, 0);
+
+    if (recvb == -1)
+    {
+        perror("recv");
+        exit(1);
+    }
+
+    else if (!recvb)
+    {
+        printf_time("Connection with client closed.\n");
+        return 0;
+    }
+
+    return recvb;
+}
+
+/*
+ * Function:  sendData
+ * --------------------
+ * Sends data to sender.
+ *
+ *  clientSocket: client's sock file descriptor.
+ * 
+ *  buffer: the buffer of data.
+ * 
+ *  len: buffer size.
+ *
+ *  returns: total bytes sent,
+ *           exit error 1 on fail.
+ */
+int sendData(int clientSocket, void* buffer, int len) {
+    int sentd = send(clientSocket, buffer, len, 0);
+
+    if (sentd == 0)
+    {
+        printf_time("Client doesn't accept requests.\n");
+    }
+
+    else if (sentd < len)
+    {
+        printf_time("Data was only partly send (%d/%d bytes).\n", sentd, len);
+    }
+
+    else
+    {
+        printf_time("Total bytes sent is %d.\n", sentd);
+    }
+
+    usleep(WAIT_TIME);
+
+    return sentd;
+}
+
+/*
+ * Function:  changeCCAlgorithm
+ * --------------------
+ *  Change the TCP Congestion Control algorithm (reno or cubic). 
+ *
+ *  socketfd: socket file descriptor.
+ * 
+ *  whichOne: 1 for reno, 0 for cubic.
+ */
+void changeCCAlgorithm(int socketfd, int whichOne) {
+    printf_time("Changing congestion control algorithm to %s...\n", (whichOne ? "reno":"cubic"));
+
+    if (whichOne)
+    {
+        socklen_t CC_reno_len = strlen(CC_reno);
+
+        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_reno, CC_reno_len) != 0)
+        {
+            perror("setsockopt");
+            exit(1);
+        }
+    }
+
+    else
+    {
+        socklen_t CC_cubic_len = strlen(CC_cubic);
+
+        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_cubic, CC_cubic_len) != 0)
+        {
+            perror("setsockopt");
+            exit(1);
+        }
+    }
+}
+
+/*
+ * Function:  authCheck
+ * --------------------
+ *  Makes an authentication check with the sender.
+ *
+ *  clientSocket: client's sock file descriptor.
+ *
+ *  returns: 1 on success,
+ *           0 on fail.
+ */
+void authCheck(int clientSocket) {
+    int auth, ok = 1, check = AUTH_CHECK;
+
+    // This is a dummy send, incase of packet loss - so the receiver will get every part of the file.
+    send(clientSocket, &ok, sizeof(int), 0);
+
+    printf_time("Waiting for authentication...\n");
+    getDataFromClient(clientSocket, &auth, sizeof(int));
+
+    if (auth != check)
+    {
+        printf_time("Error with authentication!\n");
+    }
+
+    else
+    {
+        printf_time("Authentication OK.\n");
+    }
+
+    sendData(clientSocket, &auth, sizeof(int));
+    printf_time("Authentication sent back.\n");
+}
+
+void calculateTimes(clock_t * firstPart, clock_t * secondPart, int times_runned) {
+    clock_t sumFirstPart = 0, sumSecondPart = 0, avgFirstPart = 0, avgSecondPart = 0;
+
+    printf("--------------------------------------------\n");
+    printf("(*) Times summary:\n\n");
+    printf("(*) Cubic CC:\n");
+
+    for (int i = 0; i < times_runned; ++i)
+    {
+        sumFirstPart += firstPart[i];
+        printf("(*) Run %d, Time: %ld μs\n", (i+1), firstPart[i]);
+    }
+
+    printf("\n(*) Reno CC:\n");
+
+    for (int i = 0; i < times_runned; ++i)
+    {
+        sumSecondPart += secondPart[i];
+        printf("(*) Run %d, Time: %ld μs\n", (i+1), secondPart[i]);
+    }
+
+    if (times_runned > 0)
+    {
+        avgFirstPart = (sumFirstPart / times_runned);
+        avgSecondPart = (sumSecondPart / times_runned);
+    }
+
+    printf("\n(*) Time avarages:\n");
+    printf("(*) First part (Cubic CC): %ld μs\n", avgFirstPart);
+    printf("(*) Second part (Reno CC): %ld μs\n", avgSecondPart);
+    printf("--------------------------------------------\n");
+
+    free(firstPart);
+    free(secondPart);
 }
