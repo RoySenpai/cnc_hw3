@@ -110,7 +110,7 @@ int main() {
                 {
                     secondPart[times_runned] = clock() - startTime;
 
-                    if (++times_runned == currentSize)
+                    if (++times_runned > currentSize)
                     {
                         currentSize *= 2;
                         firstPart = realloc(firstPart, (currentSize * sizeof(clock_t)));
@@ -128,7 +128,12 @@ int main() {
 
                     printf_time("First part received.\n");
 
-                    authCheck(clientSocket);
+                    printf_time("Sending authentication...\n");
+
+                    char auth[5];
+                    sprintf(auth, "%d", (ID1^ID2));
+                    sendData(clientSocket, &auth, sizeof(auth));
+                    printf_time("Authentication sent.\n");
                 }
 
                 printf_time("Received total %d bytes.\n", totalReceived);
@@ -307,39 +312,6 @@ void changeCCAlgorithm(int socketfd, int whichOne) {
             exit(1);
         }
     }
-}
-
-/*
- * Function:  authCheck
- * --------------------
- *  Makes an authentication check with the sender.
- *
- *  clientSocket: client's sock file descriptor.
- *
- *  returns: 1 on success,
- *           0 on fail.
- */
-void authCheck(int clientSocket) {
-    int auth, ok = 1, check = AUTH_CHECK;
-
-    // This is a dummy send, incase of packet loss - so the receiver will get every part of the file.
-    send(clientSocket, &ok, sizeof(int), 0);
-
-    printf_time("Waiting for authentication...\n");
-    getDataFromClient(clientSocket, &auth, sizeof(int));
-
-    if (auth != check)
-    {
-        printf_time("Error with authentication!\n");
-    }
-
-    else
-    {
-        printf_time("Authentication OK.\n");
-    }
-
-    sendData(clientSocket, &auth, sizeof(int));
-    printf_time("Authentication sent back.\n");
 }
 
 void calculateTimes(clock_t * firstPart, clock_t * secondPart, int times_runned) {

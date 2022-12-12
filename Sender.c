@@ -202,19 +202,14 @@ int sendData(int socketfd, void* buffer, int len) {
  *           0 on fail.
  */
 int authCheck(int socketfd) {
-    int buffer = 0, check = AUTH_CHECK;
+    char buffer[5], check[5];
+
+    sprintf(check, "%d", (ID1^ID2));
     
-    recv(socketfd, &buffer, sizeof(int), 0);
-
-    printf("Sending authentication...\n");
-
-    sendData(socketfd, &check, sizeof(int));
-
     printf("Waiting for authentication...\n");
+    recv(socketfd, &buffer, sizeof(buffer), 0);
 
-    recv(socketfd, &buffer, sizeof(int), 0);
-
-    if (buffer != check)
+    if (strcmp(buffer, check) != 0)
     {
         printf("Error with authentication!\n");
         return 0;

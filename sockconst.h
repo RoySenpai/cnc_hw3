@@ -14,7 +14,9 @@
 #define SERVER_PORT 8888
 
 /* Authentication check (XOR) */
-#define AUTH_CHECK (6159^2175)
+#define ID1 6159
+
+#define ID2 2175
 
 /* Defines the total file size. */
 #define FILE_SIZE 1048575
