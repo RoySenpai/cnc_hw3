@@ -30,9 +30,9 @@
 #include <unistd.h>
 #include "sockconst.h"
 
-const char * fileName = "sendthis.txt";
-const char * CC_reno = "reno";
-const char * CC_cubic = "cubic";
+char * fileName = "sendthis.txt";
+char * CC_reno = "reno";
+char * CC_cubic = "cubic";
 
 int socketSetup(struct sockaddr_in *serverAddress) {
     int socketfd = INVALID_SOCKET;
@@ -55,8 +55,48 @@ int socketSetup(struct sockaddr_in *serverAddress) {
     return socketfd;
 }
 
+void readFromFile(char* fileContent) {
+    FILE * fpointer = NULL;
+    fpointer = fopen(fileName, "r");
+
+    if (fpointer == NULL)
+    {
+        perror("fopen");
+        exit(1);
+    }
+
+    fread(fileContent, sizeof(char), FILE_SIZE, fpointer);
+    fclose(fpointer);
+}
+
+int sendData(int socketfd, void* buffer, int len) {
+    int sentd = send(socketfd, buffer, len, 0);
+
+    if (sentd == 0)
+        printf("Server doesn't accept requests.\n");
+
+    else if (sentd < len)
+    {
+        printf("Data was only partly send (%d/%d bytes).\n", sentd, len);
+    }
+
+    else
+        printf("Total bytes sent is %d.\n", sentd);
+
+    usleep(WAIT_TIME);
+
+    return sentd;
+}
+
 int authCheck(int socketfd) {
     int buffer = 0, check = AUTH_CHECK;
+    
+    recv(socketfd, &buffer, sizeof(int), 0);
+
+    printf("Sending authentication...\n");
+
+    sendData(socketfd, &check, sizeof(int));
+
     printf("Waiting for authentication...\n");
 
     recv(socketfd, &buffer, sizeof(int), 0);
@@ -72,71 +112,29 @@ int authCheck(int socketfd) {
     return 1;
 }
 
-void sendExitandClose(int socketfd) {
-    char* exitcmd = "exit";
-    int len = (int) (strlen(exitcmd) + 1);
+void changeCCAlgorithm(int socketfd, int whichOne) {
+    printf("Changing congestion control algorithm to %s...\n", (whichOne ? "reno":"cubic"));
 
-    int sentd = send(socketfd, exitcmd, len, 0);
-
-    if (sentd == 0)
-        printf("Server doesn't accept requests.\n");
-
-    else if (sentd < len)
-        printf("Data was only partly send (%d/%d bytes).\n", sentd, len);
-
-    else
-        printf("Total bytes sent is %d.\n", sentd);
-
-    printf("Closing connection...\n");
-
-    close(socketfd);
-}
-
-void readFromFile(char* fileContent) {
-    FILE * fpointer = NULL;
-    fpointer = fopen(fileName, "r");
-
-    if (fpointer == NULL)
+    if (whichOne)
     {
-        perror("fopen");
-        exit(1);
-    }
+        socklen_t CC_reno_len = strlen(CC_reno);
 
-    fread(fileContent, sizeof(char), FILE_SIZE, fpointer);
-    fclose(fpointer);
-}
-
-int sendData(int socketfd, char* buffer, int len) {
-    int sentd = send(socketfd, buffer, len, 0);
-
-    if (sentd == 0)
-        printf("Server doesn't accept requests.\n");
-
-    else if (sentd < len)
-    {
-        printf("Data was only partly send (%d/%d bytes).\n", sentd, len);
+        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_reno, CC_reno_len) != 0)
+        {
+            perror("setsockopt");
+            exit(1);
+        }
     }
 
     else
-        printf("Total bytes sent is %d.\n", sentd);
-
-    return sentd;
-}
-
-void changeCCAlgorithm(int socketfd, const char * buffer, int len) {
-    char buffer2[8];
-    socklen_t len2 = sizeof(buffer2);
-
-    if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, buffer, len) != 0)
     {
-        perror("setsockopt");
-        exit(1);
-    }
+        socklen_t CC_cubic_len = strlen(CC_cubic);
 
-    if (getsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, buffer2, &len2) != 0)
-    {
-        perror("getsockopt");
-        exit(1);
+        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_cubic, CC_cubic_len) != 0)
+        {
+            perror("setsockopt");
+            exit(1);
+        }
     }
 }
 
@@ -167,30 +165,18 @@ int main() {
 
     while(1)
     {
-        int choice, check = 0;
-        socklen_t len = strlen(CC_reno);
+        int choice;
 
-        while(!check)
-        {
-            sendData(socketfd, fileContent, (FILE_SIZE/2));
-            check = authCheck(socketfd);
-        }
+        printf("Sending the first part...\n");
 
-        check = 0;
+        sendData(socketfd, fileContent, (FILE_SIZE/2));
+        authCheck(socketfd);
 
-        printf("Changing congestion control algorithm to reno...\n");
-        
-        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_reno, len) != 0)
-        {
-            perror("setsockopt");
-            exit(1);
-        }
+        changeCCAlgorithm(socketfd, 1);
 
-        while(!check)
-        {
-            sendData(socketfd, fileContent, (FILE_SIZE/2));
-            check = authCheck(socketfd);
-        }
+        printf("Sending the second part...\n");
+
+        sendData(socketfd, (fileContent+(FILE_SIZE/2)), (FILE_SIZE/2));
 
         printf("Send the file again? (For data gathering)\n");
         scanf("%d", &choice);
@@ -202,15 +188,7 @@ int main() {
             break;
         }
 
-        printf("Changing congestion control algorithm to cubic...\n");
-
-        len = strlen(CC_cubic);
-
-        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_cubic, len) != 0)
-        {
-            perror("setsockopt");
-            exit(1);
-        }
+        changeCCAlgorithm(socketfd, 0);
     }
 
     printf("Closing connection...\n");

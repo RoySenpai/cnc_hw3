@@ -31,6 +31,9 @@
 #include <time.h>
 #include "sockconst.h"
 
+char * CC_reno = "reno";
+char * CC_cubic = "cubic";
+
 char * timestamp();
 #define printf_time(f_, ...) printf("%s ", timestamp()), printf((f_), ##__VA_ARGS__);
 
@@ -83,7 +86,7 @@ int socketSetup(struct sockaddr_in *serverAddress) {
     return socketfd;
 }
 
-int getDataFromClient(int clientSocket, char *buffer, int len) {
+int getDataFromClient(int clientSocket, void *buffer, int len) {
     int recvb = recv(clientSocket, buffer, len, 0);
 
     if (recvb == -1)
@@ -101,26 +104,108 @@ int getDataFromClient(int clientSocket, char *buffer, int len) {
     return recvb;
 }
 
+int sendData(int clientSocket, void* buffer, int len) {
+    int sentd = send(clientSocket, buffer, len, 0);
+
+    if (sentd == 0)
+    {
+        printf_time("Client doesn't accept requests.\n");
+    }
+
+    else if (sentd < len)
+    {
+        printf_time("Data was only partly send (%d/%d bytes).\n", sentd, len);
+    }
+
+    else
+    {
+        printf_time("Total bytes sent is %d.\n", sentd);
+    }
+
+    usleep(WAIT_TIME);
+
+    return sentd;
+}
+
+void changeCCAlgorithm(int socketfd, int whichOne) {
+    printf_time("Changing congestion control algorithm to %s...\n", (whichOne ? "reno":"cubic"));
+
+    if (whichOne)
+    {
+        socklen_t CC_reno_len = strlen(CC_reno);
+
+        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_reno, CC_reno_len) != 0)
+        {
+            perror("setsockopt");
+            exit(1);
+        }
+    }
+
+    else
+    {
+        socklen_t CC_cubic_len = strlen(CC_cubic);
+
+        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_cubic, CC_cubic_len) != 0)
+        {
+            perror("setsockopt");
+            exit(1);
+        }
+    }
+}
+
+void authCheck(int clientSocket) {
+    int auth, ok = 1, check = AUTH_CHECK;
+
+    // This is a dummy send, incase of packet loss - so the receiver will get every part of the file.
+    send(clientSocket, &ok, sizeof(int), 0);
+
+    printf_time("Waiting for authentication...\n");
+    getDataFromClient(clientSocket, &auth, sizeof(int));
+
+    if (auth != check)
+    {
+        printf_time("Error with authentication!\n");
+    }
+
+    else
+    {
+        printf_time("Authentication OK.\n");
+    }
+
+    sendData(clientSocket, &auth, sizeof(int));
+    printf_time("Authentication sent back.\n");
+}
+
 void calculateTimes(clock_t * firstPart, clock_t * secondPart, int times_runned) {
-    clock_t sumFirstPart = 0, sumSecondPart = 0, avgFirstPart, avgSecondPart;
+    clock_t sumFirstPart = 0, sumSecondPart = 0, avgFirstPart = 0, avgSecondPart = 0;
 
     printf("--------------------------------------------\n");
-    printf("(*) Times summary:\n");
+    printf("(*) Times summary:\n\n");
+    printf("(*) Cubic CC:\n");
 
     for (int i = 0; i < times_runned; ++i)
     {
         sumFirstPart += firstPart[i];
-        sumSecondPart += secondPart[i];
-
-        printf("(*) Run %d: First part: %ld μs; Second part: %ld μs\n", (i+1), (firstPart[i]), (secondPart[i]));
+        printf("(*) Run %d, Time: %ld μs\n", (i+1), firstPart[i]);
     }
 
-    avgFirstPart = (sumFirstPart / times_runned);
-    avgSecondPart = (sumSecondPart / times_runned);
+    printf("\n(*) Reno CC:\n");
 
-    printf("(*) Time avarages:\n");
-    printf("(*) First part: %ld μs\n", avgFirstPart);
-    printf("(*) Second part: %ld μs\n", avgSecondPart);
+    for (int i = 0; i < times_runned; ++i)
+    {
+        sumSecondPart += secondPart[i];
+        printf("(*) Run %d, Time: %ld μs\n", (i+1), secondPart[i]);
+    }
+
+    if (times_runned > 0)
+    {
+        avgFirstPart = (sumFirstPart / times_runned);
+        avgSecondPart = (sumSecondPart / times_runned);
+    }
+
+    printf("\n(*) Time avarages:\n");
+    printf("(*) First part (Cubic CC): %ld μs\n", avgFirstPart);
+    printf("(*) Second part (Reno CC): %ld μs\n", avgSecondPart);
     printf("--------------------------------------------\n");
 
     free(firstPart);
@@ -161,14 +246,14 @@ int main() {
         
         inet_ntop(AF_INET, &(clientAddress.sin_addr), clientAddr, INET_ADDRSTRLEN);
 
-        printf_time("Connection made with {%s:%d}\n", clientAddr, clientAddress.sin_port);
+        printf_time("Connection made with {%s:%d}.\n", clientAddr, clientAddress.sin_port);
 
         int totalReceived = 0, whichPart = 1;
         clock_t startTime;
 
         while (1)
         {
-            int totalBytesReceived, buff = AUTH_CHECK;
+            int totalBytesReceived = 0;
             char buffer[FILE_SIZE/2];
 
             if (totalReceived == 0)
@@ -180,6 +265,12 @@ int main() {
 
             totalBytesReceived = getDataFromClient(clientSocket, buffer, (FILE_SIZE/2));
             totalReceived += totalBytesReceived;
+
+            if (totalBytesReceived == 0)
+            {
+                running = 0;
+                break;
+            }
 
             if (totalReceived == (FILE_SIZE/2))
             {
@@ -204,12 +295,11 @@ int main() {
                     whichPart = 2;
 
                     printf_time("First part received, waiting for second part...\n");
+
+                    authCheck(clientSocket);
                 }
 
                 printf_time("Received total %d bytes\n", totalReceived);
-                printf_time("Sending authentication check...\n");
-                send(clientSocket, &buff, sizeof(int), 0);
-                printf_time("Authentication sent.\n");
 
                 totalReceived = 0;
             }
@@ -228,7 +318,7 @@ int main() {
         printf_time("Connection with {%s:%d} closed.\n", clientAddr, clientAddress.sin_port);
     }
 
-    usleep(1000*100);
+    usleep(WAIT_TIME);
     close(socketfd);
     printf_time("Server shutdown...\n");
     

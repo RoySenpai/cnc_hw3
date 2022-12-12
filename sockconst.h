@@ -12,4 +12,6 @@
 
 #define CLOCKS_PER_MS ((__clock_t) 1000)
 
+#define WAIT_TIME 1000
+
 #endif
