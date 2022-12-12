@@ -229,8 +229,8 @@ int main() {
         socklen_t clientAddressLen;
         int clientSocket, times_runned;
         char clientAddr[INET_ADDRSTRLEN];
-        clock_t *firstPart = malloc(DEFAULT_SIZE_TIMES * sizeof(clock_t)), *secondPart = malloc(DEFAULT_SIZE_TIMES * sizeof(clock_t));
-        int currentSize = DEFAULT_SIZE_TIMES;
+        clock_t *firstPart = malloc(sizeof(clock_t)), *secondPart = malloc(sizeof(clock_t));
+        int currentSize = 1;
 
         memset(&clientAddress, 0, sizeof(clientAddress));
 
@@ -294,12 +294,14 @@ int main() {
                     firstPart[times_runned] = clock() - startTime;
                     whichPart = 2;
 
-                    printf_time("First part received, waiting for second part...\n");
+                    printf_time("First part received.\n");
 
                     authCheck(clientSocket);
                 }
 
-                printf_time("Received total %d bytes\n", totalReceived);
+                printf_time("Received total %d bytes.\n", totalReceived);
+
+                changeCCAlgorithm(socketfd, ((whichPart == 1) ? 0:1));
 
                 totalReceived = 0;
             }

@@ -34,109 +34,11 @@ char * fileName = "sendthis.txt";
 char * CC_reno = "reno";
 char * CC_cubic = "cubic";
 
-int socketSetup(struct sockaddr_in *serverAddress) {
-    int socketfd = INVALID_SOCKET;
-    memset(serverAddress, 0, sizeof(*serverAddress));
-    serverAddress->sin_family = AF_INET;
-    serverAddress->sin_port = htons(SERVER_PORT);
-
-    if (inet_pton(AF_INET, (const char*) SERVER_IP_ADDRESS, &serverAddress->sin_addr) == -1)
-    {
-        perror("inet_pton()");
-        exit(1);
-    }
-
-    if ((socketfd = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET)
-    {
-        perror("socket()");
-        exit(1);
-    }
-
-    return socketfd;
-}
-
-void readFromFile(char* fileContent) {
-    FILE * fpointer = NULL;
-    fpointer = fopen(fileName, "r");
-
-    if (fpointer == NULL)
-    {
-        perror("fopen");
-        exit(1);
-    }
-
-    fread(fileContent, sizeof(char), FILE_SIZE, fpointer);
-    fclose(fpointer);
-}
-
-int sendData(int socketfd, void* buffer, int len) {
-    int sentd = send(socketfd, buffer, len, 0);
-
-    if (sentd == 0)
-        printf("Server doesn't accept requests.\n");
-
-    else if (sentd < len)
-    {
-        printf("Data was only partly send (%d/%d bytes).\n", sentd, len);
-    }
-
-    else
-        printf("Total bytes sent is %d.\n", sentd);
-
-    usleep(WAIT_TIME);
-
-    return sentd;
-}
-
-int authCheck(int socketfd) {
-    int buffer = 0, check = AUTH_CHECK;
-    
-    recv(socketfd, &buffer, sizeof(int), 0);
-
-    printf("Sending authentication...\n");
-
-    sendData(socketfd, &check, sizeof(int));
-
-    printf("Waiting for authentication...\n");
-
-    recv(socketfd, &buffer, sizeof(int), 0);
-
-    if (buffer != check)
-    {
-        printf("Error with authentication!\n");
-        return 0;
-    }
-
-    printf("Authentication completed.\n");
-
-    return 1;
-}
-
-void changeCCAlgorithm(int socketfd, int whichOne) {
-    printf("Changing congestion control algorithm to %s...\n", (whichOne ? "reno":"cubic"));
-
-    if (whichOne)
-    {
-        socklen_t CC_reno_len = strlen(CC_reno);
-
-        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_reno, CC_reno_len) != 0)
-        {
-            perror("setsockopt");
-            exit(1);
-        }
-    }
-
-    else
-    {
-        socklen_t CC_cubic_len = strlen(CC_cubic);
-
-        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_cubic, CC_cubic_len) != 0)
-        {
-            perror("setsockopt");
-            exit(1);
-        }
-    }
-}
+int socketSetup(struct sockaddr_in *);
+void readFromFile(char*);
+int sendData(int, void*, int);
+int authCheck(int);
+void changeCCAlgorithm(int, int);
 
 int main() {
     char fileContent[FILE_SIZE];
@@ -196,4 +98,164 @@ int main() {
     close(socketfd);
 
     return 0;
+}
+
+/*
+ * Function:  socketSetup
+ * --------------------
+ * Setup the socket itself (convert the ip to binary and setup some settings).
+ *
+ *  serverAddress: a sockaddr_in struct that contains all the infromation
+ *                  needed to connect to the receiver end.
+ *
+ *  returns: socket file descriptor if successed,
+ *           exit error 1 on fail.
+ */
+int socketSetup(struct sockaddr_in *serverAddress) {
+    int socketfd = INVALID_SOCKET;
+    memset(serverAddress, 0, sizeof(*serverAddress));
+    serverAddress->sin_family = AF_INET;
+    serverAddress->sin_port = htons(SERVER_PORT);
+
+    if (inet_pton(AF_INET, (const char*) SERVER_IP_ADDRESS, &serverAddress->sin_addr) == -1)
+    {
+        perror("inet_pton()");
+        exit(1);
+    }
+
+    if ((socketfd = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET)
+    {
+        perror("socket()");
+        exit(1);
+    }
+
+    return socketfd;
+}
+
+/*
+ * Function:  readFromFile
+ * --------------------
+ *  A way to read the file content and put it into an array.
+ *
+ *  fileContent: a pointer to char array that will contain
+ *                  the file content.
+ */
+void readFromFile(char* fileContent) {
+    FILE * fpointer = NULL;
+    fpointer = fopen(fileName, "r");
+
+    if (fpointer == NULL)
+    {
+        perror("fopen");
+        exit(1);
+    }
+
+    fread(fileContent, sizeof(char), FILE_SIZE, fpointer);
+    fclose(fpointer);
+}
+
+/*
+ * Function:  sendData
+ * --------------------
+ * Sends data to receiver.
+ *
+ *  socketfd: socket file descriptor.
+ * 
+ *  buffer: the buffer of data.
+ * 
+ *  len: buffer size.
+ *
+ *  returns: total bytes sent,
+ *           exit error 1 on fail.
+ */
+int sendData(int socketfd, void* buffer, int len) {
+    int sentd = send(socketfd, buffer, len, 0);
+
+    if (sentd == -1)
+    {
+        perror("sent");
+        exit(1);
+    }
+
+    else if (!sentd)
+        printf("Server doesn't accept requests.\n");
+
+    else if (sentd < len)
+        printf("Data was only partly send (%d/%d bytes).\n", sentd, len);
+
+    else
+        printf("Total bytes sent is %d.\n", sentd);
+
+    usleep(WAIT_TIME);
+
+    return sentd;
+}
+
+/*
+ * Function:  authCheck
+ * --------------------
+ *  Makes an authentication check with the receiver.
+ *
+ *  socketfd: socket file descriptor.
+ *
+ *  returns: 1 on success,
+ *           0 on fail.
+ */
+int authCheck(int socketfd) {
+    int buffer = 0, check = AUTH_CHECK;
+    
+    recv(socketfd, &buffer, sizeof(int), 0);
+
+    printf("Sending authentication...\n");
+
+    sendData(socketfd, &check, sizeof(int));
+
+    printf("Waiting for authentication...\n");
+
+    recv(socketfd, &buffer, sizeof(int), 0);
+
+    if (buffer != check)
+    {
+        printf("Error with authentication!\n");
+        return 0;
+    }
+
+    printf("Authentication OK.\n");
+
+    return 1;
+}
+
+/*
+ * Function:  changeCCAlgorithm
+ * --------------------
+ *  Change the TCP Congestion Control algorithm (reno or cubic). 
+ *
+ *  socketfd: socket file descriptor.
+ * 
+ *  whichOne: 1 for reno, 0 for cubic.
+ */
+void changeCCAlgorithm(int socketfd, int whichOne) {
+    printf("Changing congestion control algorithm to %s...\n", (whichOne ? "reno":"cubic"));
+
+    if (whichOne)
+    {
+        socklen_t CC_reno_len = strlen(CC_reno);
+
+        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_reno, CC_reno_len) != 0)
+        {
+            perror("setsockopt");
+            exit(1);
+        }
+    }
+
+    else
+    {
+        socklen_t CC_cubic_len = strlen(CC_cubic);
+
+        if (setsockopt(socketfd, IPPROTO_TCP, TCP_CONGESTION, CC_cubic, CC_cubic_len) != 0)
+        {
+            perror("setsockopt");
+            exit(1);
+        }
+    }
 }
