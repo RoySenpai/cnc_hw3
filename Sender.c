@@ -44,10 +44,6 @@ int main() {
     char fileContent[FILE_SIZE];
     int socketfd = INVALID_SOCKET;
     struct sockaddr_in serverAddress;
-    char* exitcmd = "exit";
-    char* okcmd = "ok!!";
-    int exitcmdlen = (int) (strlen(exitcmd) + 1);
-    int okcmdlen = (int) (strlen(okcmd) + 1);
 
     printf("Client startup\n");
 
@@ -80,21 +76,17 @@ int main() {
 
         printf("Sending the second part...\n");
 
-        sendData(socketfd, (fileContent+(FILE_SIZE/2)), (FILE_SIZE/2));
+        sendData(socketfd, (fileContent+(FILE_SIZE/2)-1), (FILE_SIZE/2));
+        recv(socketfd, &choice, sizeof(int), 0);
 
         printf("Send the file again? (For data gathering)\n");
         scanf("%d", &choice);
 
         if (!choice)
         {
-            printf("Sending exit command to receiver.\n");
-            sendData(socketfd, exitcmd, exitcmdlen);
+            printf("Exiting...\n");
             break;
         }
-
-        printf("Sending OK to server and resending back the file...\n");
-        sendData(socketfd, okcmd, okcmdlen);
-        changeCCAlgorithm(socketfd, 0);
     }
 
     printf("Closing connection...\n");
@@ -189,8 +181,6 @@ int sendData(int socketfd, void* buffer, int len) {
 
     else
         printf("Total bytes sent is %d.\n", sentd);
-
-    usleep(WAIT_TIME);
 
     return sentd;
 }

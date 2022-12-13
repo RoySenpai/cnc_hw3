@@ -94,7 +94,6 @@ int main() {
             {
                 memset(buffer, 0, sizeof(buffer));
                 printf_time("Waiting for client data...\n");
-                //startTime = clock();
                 gettimeofday(&tv_start, NULL);
             }
 
@@ -107,7 +106,7 @@ int main() {
                 break;
             }
 
-            if (totalReceived == (FILE_SIZE/2) || totalReceived == (FILE_SIZE/2) - 3)
+            if (totalReceived == (FILE_SIZE/2))
             {
                 if (whichPart == 2)
                 {
@@ -121,23 +120,9 @@ int main() {
                     }
 
                     whichPart = 1;
+
                     printf_time("Second part received.\n");
-                    printf_time("Waiting for client command...\n");
-
-                    char buff[8];
-                    getDataFromClient(clientSocket, buff, sizeof(buff));
-
-                    if (buff[0] == 'e' && buff[1] == 'x' && buff[2] == 'i' && buff[3] == 't')
-                    {
-                        printf_time("Exit command received, exiting...\n");
-                        running = 0;
-                        break;
-                    }
-
-                    else if (buff[0] == 'o' && buff[1] == 'k')
-                    {
-                        printf_time("OK command received, continueing...\n");
-                    }
+                    send(clientSocket, &whichPart, sizeof(int), 0);
                 }
 
                 else
@@ -147,13 +132,7 @@ int main() {
                     whichPart = 2;
 
                     printf_time("First part received.\n");
-
-                    printf_time("Sending authentication...\n");
-
-                    char auth[5];
-                    sprintf(auth, "%d", (ID1^ID2));
-                    sendData(clientSocket, &auth, sizeof(auth));
-                    printf_time("Authentication sent.\n");
+                    authCheck(clientSocket);
                 }
 
                 printf_time("Received total %d bytes.\n", totalReceived);
@@ -325,6 +304,15 @@ void changeCCAlgorithm(int socketfd, int whichOne) {
             exit(1);
         }
     }
+}
+
+void authCheck(int clientSocket) {
+    char auth[5];
+
+    printf_time("Sending authentication...\n");
+    sprintf(auth, "%d", (ID1^ID2));
+    sendData(clientSocket, &auth, sizeof(auth));
+    printf_time("Authentication sent.\n");
 }
 
 void calculateTimes(double * firstPart, double * secondPart, int times_runned) {
