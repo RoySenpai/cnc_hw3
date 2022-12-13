@@ -18,9 +18,6 @@
 
 #define ID2 2175
 
-/* Defines the total file size. */
-#define FILE_SIZE 1048575
-
 /* Wait time in microseconds. */
 #define WAIT_TIME 1000
 

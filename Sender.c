@@ -35,20 +35,20 @@ char * CC_reno = "reno";
 char * CC_cubic = "cubic";
 
 int socketSetup(struct sockaddr_in *);
-void readFromFile(char*);
+char* readFromFile(int*);
 int sendData(int, void*, int);
 int authCheck(int);
 void changeCCAlgorithm(int, int);
 
 int main() {
-    char fileContent[FILE_SIZE];
-    int socketfd = INVALID_SOCKET;
+    char *fileContent = NULL;
+    int socketfd = INVALID_SOCKET, flen = 0;
     struct sockaddr_in serverAddress;
 
     printf("Client startup\n");
 
     printf("Reading file content...\n");
-    readFromFile(fileContent);
+    fileContent = readFromFile(&flen);
 
     printf("Setting up the socket...\n");
     socketfd = socketSetup(&serverAddress);
@@ -62,6 +62,10 @@ int main() {
     }
 
     printf("Connected successfully to %s:%d!\n", SERVER_IP_ADDRESS, SERVER_PORT);
+    printf("Sending file size to receiver...\n");
+    sendData(socketfd, &flen, sizeof(int));
+    recv(socketfd, &flen, sizeof(int), 0);
+    printf("File size sent successfully.\n");
 
     while(1)
     {
@@ -69,14 +73,14 @@ int main() {
 
         printf("Sending the first part...\n");
 
-        sendData(socketfd, fileContent, (FILE_SIZE/2));
+        sendData(socketfd, fileContent, (flen/2));
         authCheck(socketfd);
 
         changeCCAlgorithm(socketfd, 1);
 
         printf("Sending the second part...\n");
 
-        sendData(socketfd, (fileContent+(FILE_SIZE/2)-1), (FILE_SIZE/2));
+        sendData(socketfd, (fileContent + (flen/2) - 1), (flen/2));
         recv(socketfd, &choice, sizeof(int), 0);
 
         printf("Send the file again? (For data gathering)\n");
@@ -136,8 +140,10 @@ int socketSetup(struct sockaddr_in *serverAddress) {
  *  fileContent: a pointer to char array that will contain
  *                  the file content.
  */
-void readFromFile(char* fileContent) {
+char* readFromFile(int* size) {
     FILE * fpointer = NULL;
+    char* fileContent;
+
     fpointer = fopen(fileName, "r");
 
     if (fpointer == NULL)
@@ -146,8 +152,17 @@ void readFromFile(char* fileContent) {
         exit(1);
     }
 
-    fread(fileContent, sizeof(char), FILE_SIZE, fpointer);
+    fseek(fpointer, 0L, SEEK_END);
+    *size = (int) ftell(fpointer);
+    fileContent = (char*) malloc(*size * sizeof(char));
+    fseek(fpointer, 0L, SEEK_SET);
+
+    fread(fileContent, sizeof(char), *size, fpointer);
     fclose(fpointer);
+
+    printf("Total bytes read from file \"%s\" is %d.\n", fileName, *size);
+
+    return fileContent;
 }
 
 /*
@@ -169,7 +184,7 @@ int sendData(int socketfd, void* buffer, int len) {
 
     if (sentd == -1)
     {
-        perror("sent");
+        perror("send");
         exit(1);
     }
 
