@@ -29,6 +29,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/time.h>
 #include "sockconst.h"
 
 char * CC_reno = "reno";
@@ -40,7 +41,7 @@ int getDataFromClient(int, void*, int);
 int sendData(int, void*, int);
 void changeCCAlgorithm(int, int);
 void authCheck(int);
-void calculateTimes(clock_t*, clock_t*, int);
+void calculateTimes(double*, double*, int);
 
 #define printf_time(f_, ...) printf("%s ", timestamp()), printf((f_), ##__VA_ARGS__);
 
@@ -61,7 +62,7 @@ int main() {
         socklen_t clientAddressLen;
         int clientSocket, times_runned;
         char clientAddr[INET_ADDRSTRLEN];
-        clock_t *firstPart = malloc(sizeof(clock_t)), *secondPart = malloc(sizeof(clock_t));
+        double *firstPart = malloc(sizeof(double)), *secondPart = malloc(sizeof(double));
         int currentSize = 1;
 
         memset(&clientAddress, 0, sizeof(clientAddress));
@@ -81,7 +82,8 @@ int main() {
         printf_time("Connection made with {%s:%d}.\n", clientAddr, clientAddress.sin_port);
 
         int totalReceived = 0, whichPart = 1;
-        clock_t startTime;
+        struct timeval tv_start;
+        struct timeval tv_end;
 
         while (1)
         {
@@ -92,7 +94,8 @@ int main() {
             {
                 memset(buffer, 0, sizeof(buffer));
                 printf_time("Waiting for client data...\n");
-                startTime = clock();
+                //startTime = clock();
+                gettimeofday(&tv_start, NULL);
             }
 
             totalBytesReceived = getDataFromClient(clientSocket, buffer, (FILE_SIZE/2));
@@ -104,12 +107,12 @@ int main() {
                 break;
             }
 
-            if (totalReceived == (FILE_SIZE/2))
+            if (totalReceived == (FILE_SIZE/2) || totalReceived == (FILE_SIZE/2) - 3)
             {
                 if (whichPart == 2)
                 {
-                    secondPart[times_runned] = clock() - startTime;
-
+                    gettimeofday(&tv_end, NULL);
+                    secondPart[times_runned] = ((tv_end.tv_sec - tv_start.tv_sec)*1000) + (((double)(tv_end.tv_usec - tv_start.tv_usec))/1000);
                     if (++times_runned > currentSize)
                     {
                         currentSize *= 2;
@@ -119,11 +122,28 @@ int main() {
 
                     whichPart = 1;
                     printf_time("Second part received.\n");
+                    printf_time("Waiting for client command...\n");
+
+                    char buff[8];
+                    getDataFromClient(clientSocket, buff, sizeof(buff));
+
+                    if (buff[0] == 'e' && buff[1] == 'x' && buff[2] == 'i' && buff[3] == 't')
+                    {
+                        printf_time("Exit command received, exiting...\n");
+                        running = 0;
+                        break;
+                    }
+
+                    else if (buff[0] == 'o' && buff[1] == 'k')
+                    {
+                        printf_time("OK command received, continueing...\n");
+                    }
                 }
 
                 else
                 {
-                    firstPart[times_runned] = clock() - startTime;
+                    gettimeofday(&tv_end, NULL);
+                    firstPart[times_runned] = ((tv_end.tv_sec - tv_start.tv_sec)*1000) + (((double)(tv_end.tv_usec - tv_start.tv_usec))/1000);
                     whichPart = 2;
 
                     printf_time("First part received.\n");
@@ -141,13 +161,6 @@ int main() {
                 changeCCAlgorithm(socketfd, ((whichPart == 1) ? 0:1));
 
                 totalReceived = 0;
-            }
-
-            else if (buffer[0] == 'e' && buffer[1] == 'x' && buffer[2] == 'i' && buffer[3] == 't')
-            {
-                printf_time("Exit command received, exiting...\n");
-                running = 0;
-                break;
             }
         }
 
@@ -314,8 +327,8 @@ void changeCCAlgorithm(int socketfd, int whichOne) {
     }
 }
 
-void calculateTimes(clock_t * firstPart, clock_t * secondPart, int times_runned) {
-    clock_t sumFirstPart = 0, sumSecondPart = 0, avgFirstPart = 0, avgSecondPart = 0;
+void calculateTimes(double * firstPart, double * secondPart, int times_runned) {
+    double sumFirstPart = 0, sumSecondPart = 0, avgFirstPart = 0, avgSecondPart = 0;
 
     printf("--------------------------------------------\n");
     printf("(*) Times summary:\n\n");
@@ -324,7 +337,7 @@ void calculateTimes(clock_t * firstPart, clock_t * secondPart, int times_runned)
     for (int i = 0; i < times_runned; ++i)
     {
         sumFirstPart += firstPart[i];
-        printf("(*) Run %d, Time: %ld μs\n", (i+1), firstPart[i]);
+        printf("(*) Run %d, Time: %0.3lf ms\n", (i+1), firstPart[i]);
     }
 
     printf("\n(*) Reno CC:\n");
@@ -332,18 +345,18 @@ void calculateTimes(clock_t * firstPart, clock_t * secondPart, int times_runned)
     for (int i = 0; i < times_runned; ++i)
     {
         sumSecondPart += secondPart[i];
-        printf("(*) Run %d, Time: %ld μs\n", (i+1), secondPart[i]);
+        printf("(*) Run %d, Time: %0.3lf ms\n", (i+1), secondPart[i]);
     }
 
     if (times_runned > 0)
     {
-        avgFirstPart = (sumFirstPart / times_runned);
-        avgSecondPart = (sumSecondPart / times_runned);
+        avgFirstPart = (sumFirstPart / (double)times_runned);
+        avgSecondPart = (sumSecondPart / (double)times_runned);
     }
 
     printf("\n(*) Time avarages:\n");
-    printf("(*) First part (Cubic CC): %ld μs\n", avgFirstPart);
-    printf("(*) Second part (Reno CC): %ld μs\n", avgSecondPart);
+    printf("(*) First part (Cubic CC): %0.3lf ms\n", avgFirstPart);
+    printf("(*) Second part (Reno CC): %0.3lf ms\n", avgSecondPart);
     printf("--------------------------------------------\n");
 
     free(firstPart);

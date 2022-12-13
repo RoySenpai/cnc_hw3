@@ -45,7 +45,9 @@ int main() {
     int socketfd = INVALID_SOCKET;
     struct sockaddr_in serverAddress;
     char* exitcmd = "exit";
+    char* okcmd = "ok!!";
     int exitcmdlen = (int) (strlen(exitcmd) + 1);
+    int okcmdlen = (int) (strlen(okcmd) + 1);
 
     printf("Client startup\n");
 
@@ -90,6 +92,8 @@ int main() {
             break;
         }
 
+        printf("Sending OK to server and resending back the file...\n");
+        sendData(socketfd, okcmd, okcmdlen);
         changeCCAlgorithm(socketfd, 0);
     }
 
