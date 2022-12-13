@@ -69,7 +69,7 @@ int main() {
 
     while(1)
     {
-        int choice;
+        int choice, dummy;
 
         printf("Sending the first part...\n");
 
@@ -81,10 +81,13 @@ int main() {
         printf("Sending the second part...\n");
 
         sendData(socketfd, (fileContent + (flen/2) - 1), (flen/2));
-        recv(socketfd, &choice, sizeof(int), 0);
+        recv(socketfd, &dummy, sizeof(int), 0);
 
         printf("Send the file again? (For data gathering)\n");
         scanf("%d", &choice);
+        
+        send(socketfd, &flen, sizeof(int), 0);
+        recv(socketfd, &dummy, sizeof(int), 0);
 
         if (!choice)
         {
@@ -96,6 +99,8 @@ int main() {
     printf("Closing connection...\n");
 
     close(socketfd);
+
+    free(fileContent);
 
     return 0;
 }

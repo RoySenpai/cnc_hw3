@@ -154,6 +154,16 @@ int main() {
 
                     printf_time("Second part received.\n");
                     send(clientSocket, &whichPart, sizeof(int), 0);
+
+                    int dummy;
+
+                    if (getDataFromClient(clientSocket, &dummy, sizeof(int)) == 0)
+                    {
+                        running = 0;
+                        break;
+                    }
+
+                    send(clientSocket, &whichPart, sizeof(int), 0);
                 }
 
                 whichPart = (whichPart ? false:true);
