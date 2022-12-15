@@ -176,7 +176,7 @@ int main() {
     close(clientSocket);
     printf_time("Connection with {%s:%d} closed.\n", clientAddr, clientAddress.sin_port);
 
-    calculateTimes(firstPart, secondPart, times_runned);
+    calculateTimes(firstPart, secondPart, times_runned, fileSize);
 
     usleep(1000);
 
@@ -440,9 +440,12 @@ int authCheck(int clientSocket) {
  *                  time of the second part of the file.
  * 
  *  times_runned: number of times we sent the file.
+ * 
+ *  fileSize: size in bytes of the file that was sent.
  */
-void calculateTimes(double* firstPart, double* secondPart, int times_runned) {
+void calculateTimes(double* firstPart, double* secondPart, int times_runned, int fileSize) {
     double sumFirstPart = 0, sumSecondPart = 0, avgFirstPart = 0, avgSecondPart = 0;
+    double bitrate;
 
     printf("--------------------------------------------\n");
     printf("(*) Times summary:\n\n");
@@ -468,8 +471,12 @@ void calculateTimes(double* firstPart, double* secondPart, int times_runned) {
         avgSecondPart = (sumSecondPart / (double)times_runned);
     }
 
+    bitrate = ((fileSize / 1024) / ((avgFirstPart + avgSecondPart) / 1000));
+
     printf("\n(*) Time avarages:\n");
     printf("(*) First part (Cubic CC): %0.3lf ms\n", avgFirstPart);
     printf("(*) Second part (Reno CC): %0.3lf ms\n", avgSecondPart);
+    printf("(*) Avarage transfer time for whole file: %0.3lf ms\n", (avgFirstPart+avgSecondPart));
+    printf("(*) Avarage transfer bitrate: %0.3lf KiB/s (%0.3lf MiB/s)\n", bitrate, (bitrate / 1024));
     printf("--------------------------------------------\n");
 }

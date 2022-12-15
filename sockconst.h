@@ -38,7 +38,7 @@
 
 // Below are functions that are used for the receiver and the sender.
 
-void calculateTimes(double*, double*, int);
+void calculateTimes(double*, double*, int, int);
 
 void changeCCAlgorithm(int, int);
 
