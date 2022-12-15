@@ -149,7 +149,9 @@ int socketSetup(struct sockaddr_in *serverAddress) {
  * --------------------
  *  A way to read the file content and put it into an array.
  *
- *  fileContent: a pointer to char array that will contain
+ *  size: a pointer to an integer where it will store the file's size.
+ * 
+ * return: a pointer to char array that will contain
  *                  the file content.
  */
 char* readFromFile(int* size) {
