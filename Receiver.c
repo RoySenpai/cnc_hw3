@@ -36,20 +36,29 @@
 char * CC_reno = "reno";
 char * CC_cubic = "cubic";
 
-char * timestamp();
-int socketSetup(struct sockaddr_in*);
-int getDataFromClient(int, void*, int);
-int sendData(int, void*, int);
-void changeCCAlgorithm(int, int);
-void authCheck(int);
-void calculateTimes(double*, double*, int);
-
 #define printf_time(f_, ...) printf("%s ", timestamp()), printf((f_), ##__VA_ARGS__);
 
 int main() {
-    int socketfd = INVALID_SOCKET;
-    int running = 1;
-    struct sockaddr_in serverAddress;
+    struct sockaddr_in serverAddress, clientAddress;
+    struct timeval tv_start, tv_end;
+
+    socklen_t clientAddressLen;
+
+    char clientAddr[INET_ADDRSTRLEN];
+
+    int fileSize, times_runned = 0 ,totalReceived = 0, currentSize = 5, socketfd = INVALID_SOCKET, clientSocket = INVALID_SOCKET;
+
+    bool whichPart = false;
+
+    char* buffer = NULL;
+
+    double *firstPart = (double*) malloc(currentSize * sizeof(double)), *secondPart = (double*) malloc(currentSize * sizeof(double));
+
+    if (firstPart == NULL || secondPart == NULL)
+    {
+        perror("malloc");
+        exit(1);
+    }
 
     printf_time("Server starting up...\n");
 
@@ -57,140 +66,141 @@ int main() {
 
     printf_time("Listening on %s:%d...\n", SERVER_IP_ADDRESS, SERVER_PORT);
 
-    while(running)
+    memset(&clientAddress, 0, sizeof(clientAddress));
+
+    clientAddressLen = sizeof(clientAddress);
+
+    clientSocket = accept(socketfd, (struct sockaddr *) &clientAddress, &clientAddressLen);
+
+    if (clientSocket == -1)
     {
-        struct timeval tv_start;
-        struct timeval tv_end;
-        struct sockaddr_in clientAddress;
-        socklen_t clientAddressLen;
-        char clientAddr[INET_ADDRSTRLEN];
-        int clientSocket, times_runned, fileSize, totalReceived = 0, currentSize = 5;
-        bool whichPart = false;
-        double *firstPart = (double*) malloc(currentSize * sizeof(double));
-        double *secondPart = (double*) malloc(currentSize * sizeof(double));
-
-        if (firstPart == NULL || secondPart == NULL)
-        {
-            perror("malloc");
-            exit(1);
-        }
-
-        memset(&clientAddress, 0, sizeof(clientAddress));
-
-        clientAddressLen = sizeof(clientAddress);
-
-        clientSocket = accept(socketfd, (struct sockaddr *) &clientAddress, &clientAddressLen);
-
-        if (clientSocket == -1)
-        {
-            perror("accept");
-            exit(1);
-        }
+        perror("accept");
+        exit(1);
+    }
         
-        inet_ntop(AF_INET, &(clientAddress.sin_addr), clientAddr, INET_ADDRSTRLEN);
+    inet_ntop(AF_INET, &(clientAddress.sin_addr), clientAddr, INET_ADDRSTRLEN);
 
-        printf_time("Connection made with {%s:%d}.\n", clientAddr, clientAddress.sin_port);
+    printf_time("Connection made with {%s:%d}.\n", clientAddr, clientAddress.sin_port);
 
-        printf_time("Getting file size...\n");
-        getDataFromClient(clientSocket, &fileSize, sizeof(int));
-        send(clientSocket, &fileSize, sizeof(int), 0);
-        printf_time("Expected file size is %d bytes.\n", fileSize);
+    printf_time("Getting file size...\n");
 
-        while (1)
+    getDataFromClient(clientSocket, &fileSize, sizeof(int));
+    syncTimes(clientSocket, true);
+
+    printf_time("Expected file size is %d bytes (%.02f KiB / %.02f MiB).\n", fileSize, ((double)fileSize / 1024), ((double)fileSize/ 1048576));
+
+    buffer = malloc(fileSize * sizeof(char));
+
+    if (buffer == NULL)
+    {
+        perror("malloc");
+        exit(1);
+    }
+
+    while (true)
+    {
+        int BytesReceived;
+        
+        if (!totalReceived)
         {
-            int totalBytesReceived;
-            char buffer[fileSize/2];
+            if (!whichPart)
+                memset(buffer, 0, fileSize);
 
-            if (totalReceived == 0)
+            printf_time("Waiting for sender data...\n");
+            gettimeofday(&tv_start, NULL);
+        }
+
+        BytesReceived = getDataFromClient(clientSocket, buffer + (totalReceived + (whichPart ? ((fileSize/2) - 1):0)), (fileSize/2));
+        totalReceived += BytesReceived;
+
+        if (!BytesReceived)
+            break;
+
+        else if (totalReceived == (fileSize/2))
+        {
+            if (!whichPart)
             {
-                memset(buffer, 0, sizeof(buffer));
-                printf_time("Waiting for sender data...\n");
-                gettimeofday(&tv_start, NULL);
-            }
-
-            totalBytesReceived = getDataFromClient(clientSocket, buffer, (fileSize/2));
-            totalReceived += totalBytesReceived;
-
-            if (!totalBytesReceived)
-            {
-                running = 0;
-                break;
-            }
-
-            else if (totalReceived == (fileSize/2))
-            {
-                if (whichPart == false)
-                {
-                    gettimeofday(&tv_end, NULL);
-                    firstPart[times_runned] = ((tv_end.tv_sec - tv_start.tv_sec)*1000) + (((double)(tv_end.tv_usec - tv_start.tv_usec))/1000);
-
-                    printf_time("First part received.\n");
-                    authCheck(clientSocket);
-                }
-
-                else
-                {
-                    gettimeofday(&tv_end, NULL);
-                    secondPart[times_runned] = ((tv_end.tv_sec - tv_start.tv_sec)*1000) + (((double)(tv_end.tv_usec - tv_start.tv_usec))/1000);
-
-                    if (++times_runned >= currentSize)
-                    {
-                        currentSize += 5;
-                        double* p1 = (double*) realloc(firstPart, (currentSize * sizeof(double)));
-                        double* p2 = (double*) realloc(secondPart, (currentSize * sizeof(double)));
-
-                        // Safe fail so we don't lose the pointers
-                        if (p1 == NULL || p2 == NULL)
-                        {
-                            perror("realloc");
-                            free(firstPart);
-                            free(secondPart);
-                            exit(1);
-                        }
-
-                        firstPart = p1;
-                        secondPart = p2;
-                    }
-
-                    printf_time("Second part received.\n");
-                    send(clientSocket, &whichPart, sizeof(int), 0);
-
-                    int dummy;
-
-                    if (getDataFromClient(clientSocket, &dummy, sizeof(int)) == 0)
-                    {
-                        running = 0;
-                        break;
-                    }
-
-                    send(clientSocket, &whichPart, sizeof(int), 0);
-                }
-
-                whichPart = (whichPart ? false:true);
+                gettimeofday(&tv_end, NULL);
+                firstPart[times_runned] = ((tv_end.tv_sec - tv_start.tv_sec)*1000) + (((double)(tv_end.tv_usec - tv_start.tv_usec))/1000);
 
                 printf_time("Received total %d bytes.\n", totalReceived);
+                printf_time("First part received.\n");
 
-                changeCCAlgorithm(socketfd, ((whichPart) ? 1:0));
-
-                totalReceived = 0;
+                authCheck(clientSocket);
             }
+
+            else
+            {
+                gettimeofday(&tv_end, NULL);
+                secondPart[times_runned] = ((tv_end.tv_sec - tv_start.tv_sec)*1000) + (((double)(tv_end.tv_usec - tv_start.tv_usec))/1000);
+
+                if (++times_runned >= currentSize)
+                {
+                    currentSize += 5;
+
+                    double* p1 = (double*) realloc(firstPart, (currentSize * sizeof(double)));
+                    double* p2 = (double*) realloc(secondPart, (currentSize * sizeof(double)));
+
+                    // Safe fail so we don't lose the pointers
+                    if (p1 == NULL || p2 == NULL)
+                    {
+                        perror("realloc");
+                        exit(1);
+                    }
+
+                    firstPart = p1;
+                    secondPart = p2;
+                }
+
+                printf_time("Received total %d bytes.\n", totalReceived);
+                printf_time("Second part received.\n");
+
+                syncTimes(clientSocket, true);
+
+                printf_time("Waiting for sender decision...\n");
+                    
+                if (!syncTimes(clientSocket, false))
+                    break;
+
+                syncTimes(clientSocket, true);
+            }
+
+            whichPart = (whichPart ? false:true);
+
+            changeCCAlgorithm(socketfd, ((whichPart) ? 1:0));
+
+            totalReceived = 0;
         }
-
-        calculateTimes(firstPart, secondPart, times_runned);
-
-        close(clientSocket);
-        printf_time("Connection with {%s:%d} closed.\n", clientAddr, clientAddress.sin_port);
     }
+
+    close(clientSocket);
+    printf_time("Connection with {%s:%d} closed.\n", clientAddr, clientAddress.sin_port);
+
+    calculateTimes(firstPart, secondPart, times_runned);
 
     usleep(1000);
 
+    printf_time("Closing socket...\n");
     close(socketfd);
-    printf_time("Server shutdown...\n");
+
+    printf_time("Memory cleanup...\n");
+    free(firstPart);
+    free(secondPart);
+    free(buffer);
+
+    printf_time("Receiver exit.\n");
     
     return 0;
 }
 
-char * timestamp() {
+/*
+ * Function:  timestamp
+ * --------------------
+ * A fancy time formatation
+ *
+ *  returns: a pointer (basically a string)
+ */
+char* timestamp() {
     char buffer[16];
     time_t now = time(NULL);
     struct tm* timest = localtime(&now);
@@ -247,9 +257,25 @@ int socketSetup(struct sockaddr_in *serverAddress) {
 
     printf_time("Socket successfully created.\n");
 
+    changeCCAlgorithm(socketfd, 0);
+
     return socketfd;
 }
 
+/*
+ * Function:  getDataFromClient
+ * --------------------
+ * Get data from sender.
+ *
+ *  clientSocket: client's sock file descriptor.
+ * 
+ *  buffer: the buffer of data.
+ * 
+ *  len: buffer size.
+ *
+ *  returns: total bytes received,
+ *           exit error 1 on fail.
+ */
 int getDataFromClient(int clientSocket, void *buffer, int len) {
     int recvb = recv(clientSocket, buffer, len, 0);
 
@@ -287,7 +313,7 @@ int sendData(int clientSocket, void* buffer, int len) {
 
     if (sentd == 0)
     {
-        printf_time("Client doesn't accept requests.\n");
+        printf_time("Sender doesn't accept requests.\n");
     }
 
     else if (sentd < len)
@@ -299,8 +325,6 @@ int sendData(int clientSocket, void* buffer, int len) {
     {
         printf_time("Total bytes sent is %d.\n", sentd);
     }
-
-    usleep(WAIT_TIME);
 
     return sentd;
 }
@@ -340,16 +364,84 @@ void changeCCAlgorithm(int socketfd, int whichOne) {
     }
 }
 
-void authCheck(int clientSocket) {
+/*
+ * Function:  syncTimes
+ * --------------------
+ * A function that helps with timers and packet retransmission synchronization.
+ *
+ *  socketfd: socket file descriptor
+ *  
+ *  loss: are we in loss mode or timer sync mode.
+ *
+ *  returns: total bytes sent (always 1) or received 
+ *           (1 for normal operation, 0 if the socket was closed),
+ *           exit error 1 on fail.
+ */
+int syncTimes(int socketfd, bool loss) {
+    static char dummy = 0;
+    static int ret = 0;
+
+    if (loss)
+    {
+        ret = send(socketfd, &dummy, sizeof(char), 0);
+
+        if (ret == -1)
+        {
+            perror("send");
+            exit(1);
+        }
+
+        return ret;
+    }
+
+    printf_time("Waiting for OK signal from sender...\n");
+    ret = recv(socketfd, &dummy, sizeof(char), 0);
+
+    if (ret == -1)
+    {
+        perror("recv");
+        exit(1);
+    }
+
+    printf_time("OK – Continue\n");
+
+    return ret;
+}
+
+/*
+ * Function:  authCheck
+ * --------------------
+ * Makes an authentication check with the sender.
+ *
+ *  socketfd: socket file descriptor.
+ *
+ *  returns: 1 always
+ */
+int authCheck(int clientSocket) {
     char auth[5];
 
     printf_time("Sending authentication...\n");
     sprintf(auth, "%d", (ID1^ID2));
     sendData(clientSocket, &auth, sizeof(auth));
     printf_time("Authentication sent.\n");
+
+    return 1;
 }
 
-void calculateTimes(double * firstPart, double * secondPart, int times_runned) {
+/*
+ * Function:  calculateTimes
+ * --------------------
+ * Makes an authentication check with the sender.
+ *
+ *  firstPart: a pointer that holds the array of all the receive
+ *                  time of the first part of the file.
+ * 
+ *  secondPart: a pointer that holds the array of all the receive
+ *                  time of the second part of the file.
+ * 
+ *  times_runned: number of times we sent the file.
+ */
+void calculateTimes(double* firstPart, double* secondPart, int times_runned) {
     double sumFirstPart = 0, sumSecondPart = 0, avgFirstPart = 0, avgSecondPart = 0;
 
     printf("--------------------------------------------\n");
@@ -380,7 +472,4 @@ void calculateTimes(double * firstPart, double * secondPart, int times_runned) {
     printf("(*) First part (Cubic CC): %0.3lf ms\n", avgFirstPart);
     printf("(*) Second part (Reno CC): %0.3lf ms\n", avgSecondPart);
     printf("--------------------------------------------\n");
-
-    free(firstPart);
-    free(secondPart);
 }

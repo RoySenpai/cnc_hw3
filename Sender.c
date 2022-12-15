@@ -18,6 +18,7 @@
 */
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -34,21 +35,15 @@ char * fileName = "sendthis.txt";
 char * CC_reno = "reno";
 char * CC_cubic = "cubic";
 
-int socketSetup(struct sockaddr_in *);
-char* readFromFile(int*);
-int sendData(int, void*, int);
-int authCheck(int);
-void changeCCAlgorithm(int, int);
-
 int main() {
     char *fileContent = NULL;
-    int socketfd = INVALID_SOCKET, flen = 0;
+    int socketfd = INVALID_SOCKET, fileSize = 0, choice = 0;
     struct sockaddr_in serverAddress;
 
     printf("Client startup\n");
 
     printf("Reading file content...\n");
-    fileContent = readFromFile(&flen);
+    fileContent = readFromFile(&fileSize);
 
     printf("Setting up the socket...\n");
     socketfd = socketSetup(&serverAddress);
@@ -62,45 +57,53 @@ int main() {
     }
 
     printf("Connected successfully to %s:%d!\n", SERVER_IP_ADDRESS, SERVER_PORT);
+
     printf("Sending file size to receiver...\n");
-    sendData(socketfd, &flen, sizeof(int));
-    recv(socketfd, &flen, sizeof(int), 0);
+
+    sendData(socketfd, &fileSize, sizeof(int));
+    syncTimes(socketfd, false);
+
     printf("File size sent successfully.\n");
 
-    while(1)
+    while(true)
     {
-        int choice, dummy;
-
         printf("Sending the first part...\n");
 
-        sendData(socketfd, fileContent, (flen/2));
+        sendData(socketfd, fileContent, (fileSize/2));
         authCheck(socketfd);
 
         changeCCAlgorithm(socketfd, 1);
 
         printf("Sending the second part...\n");
 
-        sendData(socketfd, (fileContent + (flen/2) - 1), (flen/2));
-        recv(socketfd, &dummy, sizeof(int), 0);
+        sendData(socketfd, (fileContent + (fileSize/2) - 1), (fileSize/2));
+        syncTimes(socketfd, false);
 
         printf("Send the file again? (For data gathering)\n");
-        scanf("%d", &choice);
+        printf("1 to resend, 0 to exit.\n");
+
+        while (scanf("%d", &choice) != 1 || (choice != 1 && choice != 0));
         
-        send(socketfd, &flen, sizeof(int), 0);
-        recv(socketfd, &dummy, sizeof(int), 0);
+        syncTimes(socketfd, true);
+        syncTimes(socketfd, false);
 
         if (!choice)
         {
             printf("Exiting...\n");
             break;
         }
+
+        changeCCAlgorithm(socketfd, 0);
     }
 
     printf("Closing connection...\n");
 
     close(socketfd);
 
+    printf("Memory cleanup...\n");
     free(fileContent);
+
+    printf("Sender exit.\n");
 
     return 0;
 }
@@ -134,6 +137,10 @@ int socketSetup(struct sockaddr_in *serverAddress) {
         exit(1);
     }
 
+    printf("Socket successfully created.\n");
+
+    changeCCAlgorithm(socketfd, 0);
+
     return socketfd;
 }
 
@@ -157,6 +164,7 @@ char* readFromFile(int* size) {
         exit(1);
     }
 
+    // Find the file size and allocate enough memory for it.
     fseek(fpointer, 0L, SEEK_END);
     *size = (int) ftell(fpointer);
     fileContent = (char*) malloc(*size * sizeof(char));
@@ -165,7 +173,7 @@ char* readFromFile(int* size) {
     fread(fileContent, sizeof(char), *size, fpointer);
     fclose(fpointer);
 
-    printf("Total bytes read from file \"%s\" is %d.\n", fileName, *size);
+    printf("File \"%s\" total size is %d bytes (%.02f KiB / %.02f MiB).\n", fileName, *size, ((double)*size / 1024), ((double)*size / 1048576));
 
     return fileContent;
 }
@@ -194,7 +202,7 @@ int sendData(int socketfd, void* buffer, int len) {
     }
 
     else if (!sentd)
-        printf("Server doesn't accept requests.\n");
+        printf("Receiver doesn't accept requests.\n");
 
     else if (sentd < len)
         printf("Data was only partly send (%d/%d bytes).\n", sentd, len);
@@ -232,6 +240,50 @@ int authCheck(int socketfd) {
     printf("Authentication OK.\n");
 
     return 1;
+}
+
+/*
+ * Function:  syncTimes
+ * --------------------
+ * A function that helps with timers and packet retransmission synchronization.
+ *
+ *  socketfd: socket file descriptor
+ *  
+ *  loss: are we in loss mode or timer sync mode.
+ *
+ *  returns: total bytes sent (always 1) or received 
+ *           (1 for normal operation, 0 if the socket was closed),
+ *           exit error 1 on fail.
+ */
+int syncTimes(int socketfd, bool loss) {
+    static char dummy = 0;
+    static int ret = 0;
+
+    if (loss)
+    {
+        ret = send(socketfd, &dummy, sizeof(char), 0);
+
+        if (ret == -1)
+        {
+            perror("send");
+            exit(1);
+        }
+
+        return ret;
+    }
+
+    printf("Waiting for OK signal from receiver...\n");
+    ret = recv(socketfd, &dummy, sizeof(char), 0);
+
+    if (ret == -1)
+    {
+        perror("recv");
+        exit(1);
+    }
+
+    printf("OK – Continue\n");
+
+    return ret;
 }
 
 /*
