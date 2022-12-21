@@ -37,7 +37,7 @@ char * CC_cubic = "cubic";
 
 int main() {
     char *fileContent = NULL;
-    int socketfd = INVALID_SOCKET, fileSize = 0, choice = 0;
+    int socketfd = INVALID_SOCKET, fileSize = 0;
     struct sockaddr_in serverAddress;
 
     printf("Client startup\n");
@@ -67,6 +67,7 @@ int main() {
 
     while(true)
     {
+        int choice = -1, ret = EOF;
         printf("Sending the first part...\n");
 
         sendData(socketfd, fileContent, (fileSize/2));
@@ -82,7 +83,13 @@ int main() {
         printf("Send the file again? (For data gathering)\n");
         printf("1 to resend, 0 to exit.\n");
 
-        while (scanf("%d", &choice) != 1 || (choice != 1 && choice != 0));
+        ret = scanf("%d", &choice);
+
+        while (ret != 1 || (choice != 1 && choice != 0))
+        {
+            scanf("%*s");
+            ret = scanf("%d", &choice);
+        }
         
         syncTimes(socketfd, true);
         syncTimes(socketfd, false);

@@ -110,7 +110,7 @@ int main() {
             gettimeofday(&tv_start, NULL);
         }
 
-        BytesReceived = getDataFromClient(clientSocket, buffer + (totalReceived + (whichPart ? ((fileSize/2) - 1):0)), (fileSize/2));
+        BytesReceived = getDataFromClient(clientSocket, buffer + (totalReceived + (whichPart ? ((fileSize/2) - 1):0)), (fileSize/2) - totalReceived);
         totalReceived += BytesReceived;
 
         if (!BytesReceived)
